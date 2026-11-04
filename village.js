@@ -102,7 +102,31 @@ const LOOKS={
  Extra1:{hat:'#4a8a3a',shirt:'#6bb050'},
  Extra2:{hat:'#c06040',shirt:'#e08060'}
 };
-let bots=[];
+let bots=[],ambient=[],train={x:0,dir:1,timer:0},night=false,visitors=[];
+function initAmbient(){
+ for(let i=0;i<8;i++)ambient.push({type:'butterfly',x:rnd()*W,y:40+rnd()*100,vx:(rnd()-0.5)*0.6,vy:(rnd()-0.5)*0.4,phase:rnd()*10});
+ for(let i=0;i<4;i++)ambient.push({type:'duck',x:pond.cx-20+rnd()*40,y:pond.cy-10,vx:(rnd()-0.5)*0.3,phase:rnd()*5});
+}
+function drawAmbient(c,t){
+ ambient.forEach(a=>{
+  if(a.type==='butterfly'){
+   const wing=Math.sin(t/200+a.phase)>0?1:0;
+   px(c,a.x,a.y,1,1,'#ff8fb0');
+   px(c,a.x-1-wing,a.y,1,1,'#b98cf0');
+   px(c,a.x+1+wing,a.y,1,1,'#b98cf0');
+  }else if(a.type==='duck'){
+   px(c,a.x,a.y,4,2,'#f5e050');
+   px(c,a.x+3,a.y-1,2,2,'#ff6a5a');
+  }
+ });
+ // train tracks
+ for(let x=0;x<W;x+=8)px(c,x,210,6,1,'#8a5a30');
+ // train
+ px(c,train.x,200,24,8,'#c83a50');
+ px(c,train.x+4,198,8,4,'#3a72c8');
+ px(c,train.x+16,198,6,4,'#ffd34a');
+ if(Math.floor(t/100)%2)px(c,train.x+22,196,2,2,'#aaa'); // smoke
+}
 function initBots(){
  const names=Object.keys(LOOKS);
  bots=names.map((name,i)=>({
@@ -126,8 +150,10 @@ function drawBot(c,b,t){
  if(b.activity==='waving'){px(c,x+4,y-12,2,4,P.skin);}
  // bubble
  if(b.bubble&&b.bubbleT>0){
-  px(c,x-10,y-24,20,10,'#fff');px(c,x-9,y-23,18,8,'#000');
-  // simple text skip for now
+  px(c,x-12,y-26,24,12,'#fff');
+  px(c,x-11,y-25,22,10,'#222');
+  // tiny text approximation
+  px(c,x-8,y-22,2,2,'#fff');px(c,x-4,y-22,2,2,'#fff');px(c,x,y-22,2,2,'#fff');
  }
 }
 function updateBots(t){
@@ -154,8 +180,29 @@ function updateBots(t){
   });
   if(b.activity&&Math.random()<0.002)b.activity=null;
  });
- // ambient
- if(Math.random()<0.01){/* fish jump or butterfly placeholder */}
+function updateAmbient(t){
+ ambient.forEach(a=>{
+  a.x+=a.vx;a.y+=a.vy||0;
+  if(a.x<0||a.x>W)a.vx*=-1;
+  if(a.y<30||a.y>180)a.vy*=-1;
+ });
+ // train
+ train.x+=train.dir*1.2;
+ if(train.x>W-30||train.x<0){train.dir*=-1;train.timer=0;}
+ train.timer++;
+ if(train.timer>180&&Math.random()<0.3){
+  // drop visitor
+  const v={name:'Visitor',look:{hat:'#aaa',shirt:'#ccc'},x:train.x+10,y:190,vx:0,vy:-0.5,phase:Math.random(),activity:null,bubble:'Hello!',bubbleT:200,life:400};
+  visitors.push(v);
+  train.timer=0;
+ }
+ visitors=visitors.filter(v=>{
+  v.life--;
+  v.y+=v.vy;v.x+=v.vx;
+  if(Math.random()<0.02){v.vx=(Math.random()-0.5)*0.5;}
+  return v.life>0;
+ });
+ night=(Math.floor(t/8000)%2===1); // simple cycle
 }
 // click reactions
 cv.addEventListener('click',e=>{
@@ -193,12 +240,15 @@ function loop(t){
 // Better loop: draw bots to a temp or adjust coordinates
 function betterLoop(t){
  updateBots(t);
+ updateAmbient(t);
  const avgX=bots.reduce((s,b)=>s+b.x,0)/bots.length;
  camX=Math.max(0,Math.min(W-VIEW_W,avgX-VIEW_W/2));
- // redraw dynamic layer
  const dyn=document.createElement('canvas');dyn.width=W;dyn.height=H;const d=dyn.getContext('2d');
  d.drawImage(low,0,0);
+ if(night){d.fillStyle='rgba(10,20,50,0.4)';d.fillRect(0,0,W,H);px(d,fountain.x-4,fountain.y-2,8,4,'#ffd34a');}
+ drawAmbient(d,t);
  bots.forEach(b=>drawBot(d,b,t));
+ visitors.forEach(v=>drawBot(d,v,t));
  ctx.imageSmoothingEnabled=false;
  ctx.clearRect(0,0,cv.width,cv.height);
  ctx.drawImage(dyn,camX,0,VIEW_W,H,0,0,cv.width,cv.height);
@@ -206,6 +256,7 @@ function betterLoop(t){
 }
 buildBG();
 initBots();
+initAmbient();
 fit();
 requestAnimationFrame(betterLoop);
-document.getElementById('info').textContent='Click a bot to make it wave and chat. They wander, fish, cook, nap, and chat when they meet. 3 screens – camera follows.';
+document.getElementById('info').textContent='Click bots to wave. They fish, cook, chat. Butterflies, ducks, day/night, and a train that drops visitors. Camera follows.';
