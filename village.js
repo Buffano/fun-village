@@ -108,7 +108,8 @@ function initBots(){
  bots=names.map((name,i)=>({
   name,look:LOOKS[name],
   x:80+i*90,y:120+Math.sin(i)*30,
-  vx:0,vy:0,dir:1,phase:Math.random()*10
+  vx:0,vy:0,dir:1,phase:Math.random()*10,
+  activity:null,bubble:null,bubbleT:0
  }));
 }
 function drawBot(c,b,t){
@@ -117,34 +118,59 @@ function drawBot(c,b,t){
  px(c,x-4,y-8+bob,8,6,L.shirt);
  px(c,x-3,y-14+bob,6,6,P.skin);
  px(c,x-5,y-16+bob,10,4,L.hat);
- // simple legs
  px(c,x-3,y-2,3,2,'#5a3a20');
  px(c,x+1,y-2,3,2,'#5a3a20');
+ // activity visuals
+ if(b.activity==='fishing'){px(c,x+5,y-6,10,1,'#6b4526');if(Math.floor(t/600)%5===0)px(c,x+12,y-4,2,2,'#f5e050');}
+ if(b.activity==='cooking'&&Math.floor(t/150)%2){px(c,x+6,y-10,2,3,'#aaa');}
+ if(b.activity==='waving'){px(c,x+4,y-12,2,4,P.skin);}
+ // bubble
+ if(b.bubble&&b.bubbleT>0){
+  px(c,x-10,y-24,20,10,'#fff');px(c,x-9,y-23,18,8,'#000');
+  // simple text skip for now
+ }
 }
 function updateBots(t){
  bots.forEach(b=>{
-  // gentle wander
-  if(Math.random()<0.02){b.vx=(Math.random()-0.5)*0.8;b.vy=(Math.random()-0.5)*0.5;}
+  if(b.bubbleT>0)b.bubbleT--;
+  if(!b.activity&&Math.random()<0.005){
+   const acts=['fishing','cooking','chatting','napping'];
+   b.activity=acts[Math.floor(Math.random()*acts.length)];
+   if(b.activity==='fishing'){b.vx=(pond.cx-b.x)*0.01;b.vy=(pond.cy-30-b.y)*0.01;}
+   if(b.activity==='cooking'){b.vx=(firepit.x-b.x)*0.01;b.vy=(firepit.y-b.y)*0.01;}
+  }
+  if(Math.random()<0.015){b.vx=(Math.random()-0.5)*0.9;b.vy=(Math.random()-0.5)*0.6;}
   b.x+=b.vx;b.y+=b.vy;
   b.x=Math.max(10,Math.min(W-10,b.x));
   b.y=Math.max(40,Math.min(H-20,b.y));
   if(b.vx>0)b.dir=1;else if(b.vx<0)b.dir=-1;
-  // simple intersection check (for future events)
+  // intersection fun
   bots.forEach(other=>{
-   if(other!==b&&Math.hypot(b.x-other.x,b.y-other.y)<12){
-    // future: trigger event here
+   if(other!==b&&Math.hypot(b.x-other.x,b.y-other.y)<14&&Math.random()<0.1){
+    b.activity='chatting';other.activity='chatting';
+    b.bubble='Hi!';b.bubbleT=120;other.bubble='Hey!';other.bubbleT=120;
+    b.vx*=-0.5;other.vx*=-0.5;
    }
   });
+  if(b.activity&&Math.random()<0.002)b.activity=null;
  });
+ // ambient
+ if(Math.random()<0.01){/* fish jump or butterfly placeholder */}
 }
-// click to move camera or focus
+// click reactions
 cv.addEventListener('click',e=>{
  const rect=cv.getBoundingClientRect();
  const mx=(e.clientX-rect.left)/S+camX;
  const my=(e.clientY-rect.top)/S;
- // optional: move nearest bot toward click
  const nearest=bots.reduce((a,b)=>Math.hypot(b.x-mx,b.y-my)<Math.hypot(a.x-mx,a.y-my)?b:a);
- nearest.vx=(mx-nearest.x)*0.05;nearest.vy=(my-nearest.y)*0.05;
+ if(Math.hypot(nearest.x-mx,nearest.y-my)<30){
+  nearest.activity='waving';
+  nearest.bubble=['Hello!','Nice day!','Let’s play!'][Math.floor(Math.random()*3)];
+  nearest.bubbleT=150;
+  nearest.vx=(Math.random()-0.5)*1.2;
+ }else{
+  nearest.vx=(mx-nearest.x)*0.04;nearest.vy=(my-nearest.y)*0.04;
+ }
 });
 function loop(t){
  updateBots(t);
@@ -182,4 +208,4 @@ buildBG();
 initBots();
 fit();
 requestAnimationFrame(betterLoop);
-document.getElementById('info').textContent='Click near a bot to nudge it. They wander and can intersect. 3 screens wide – camera follows the group.';
+document.getElementById('info').textContent='Click a bot to make it wave and chat. They wander, fish, cook, nap, and chat when they meet. 3 screens – camera follows.';
