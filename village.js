@@ -180,6 +180,7 @@ function updateBots(t){
   });
   if(b.activity&&Math.random()<0.002)b.activity=null;
  });
+}
 function updateAmbient(t){
  ambient.forEach(a=>{
   a.x+=a.vx;a.y+=a.vy||0;
