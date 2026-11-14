@@ -1,4 +1,4 @@
-// Fun Village – an enchanted village painted as ONE scene (480x360 world, painting at 2.4 px per world px) with walking
+// Emberwood Village (repo: fun-village) – an enchanted village painted as ONE scene (480x360 world, painting at 2.4 px per world px) with walking
 // villagers, a wizard, magical creatures, day/night on real Eastern time and tap-to-zoom.
 // Walkable areas / water come from an embedded mask; a few foreground pieces (posts, banners, willow) are cut from the
 // painting as occluders and depth-sorted with the characters by their baseline y.
@@ -33,14 +33,17 @@ const N={
   // east: gap in the plaza wall, tower, market stall
   EG:[330,162],EG2:[352,167],E1:[372,180],E2:[388,197],TW:[367,148],TD:[363,126],JB:[385,177],
   // south bank: cottage door, east path, portal stone
-  SW1:[205,338],SW2:[166,346],D3:[129,340],MB:[150,333],SE1:[300,347],SE2:[350,340],SE3:[385,328],PT:[409,320]
+  SW1:[205,338],SW2:[166,346],D3:[129,340],MB:[150,333],SE1:[300,347],SE2:[350,340],SE3:[385,328],PT:[409,320],
+  // in front of the four plaza benches
+  BN1:[183,148],BN2:[301,148],BN3:[193,190],BN4:[290,192]
 };
 const EDGES=[
   ['RN','RNE'],['RNE','RE'],['RE','RSE'],['RSE','RS'],['RS','RSW'],['RSW','RW'],['RW','RNW'],['RNW','RN'],
   ['RN','GN'],['GN','D2'],['RS','GS'],['GS','B1'],['B1','B2'],['B2','B3'],['B3','SJ'],
   ['RW','WG'],['WG','WG2'],['WG2','W1'],['W1','W2'],['W2','D1'],['W1','WP'],['WP','WELL'],['W2','MA'],
   ['RE','EG'],['EG','EG2'],['EG2','E1'],['E1','E2'],['E1','TW'],['TW','TD'],['E1','JB'],
-  ['SJ','SW1'],['SW1','SW2'],['SW2','D3'],['SW2','MB'],['SJ','SE1'],['SE1','SE2'],['SE2','SE3'],['SE3','PT']];
+  ['SJ','SW1'],['SW1','SW2'],['SW2','D3'],['SW2','MB'],['SJ','SE1'],['SE1','SE2'],['SE2','SE3'],['SE3','PT'],
+  ['BN1','RW'],['BN1','RNW'],['BN2','RE'],['BN2','RNE'],['BN3','RSW'],['BN3','RW'],['BN4','RSE'],['BN4','RE']];
 const HIDDEN=new Set(['W2-MA','SW2-MB']); // short spurs to flower beds, not special
 const SLOTS=[[400,198],[416,201],[432,203],[448,205]]; // queue at the stall, slot 0 = at the counter
 const DOORS=['D1','D2','D3','D4','TD'].filter(k=>N[k]);
@@ -104,8 +107,17 @@ const CHARS={ // sheet meta: cell w,h and feet anchor (sheet px), rows x cols; r
   finn:{cw:68,ch:100,ay:96,rows:3,cols:4},juniper:{cw:60,ch:116,ay:112,rows:3,cols:4},merrick:{cw:88,ch:140,ay:136,rows:3,cols:4},
   cat:{cw:52,ch:60,ay:56,rows:3,cols:4},dog:{cw:64,ch:68,ay:64,rows:3,cols:4},duck:{cw:44,ch:64,ay:60,rows:3,cols:4},
   dragon:{cw:72,ch:76,ay:72,rows:3,cols:4},frog:{cw:60,ch:76,ay:72,rows:3,cols:4},fairy:{cw:40,ch:52,ay:48,rows:3,cols:4},
-  mabelfly:{cw:132,ch:136,ay:132,rows:1,cols:4}
+  mabelfly:{cw:132,ch:136,ay:132,rows:1,cols:4},
+  helm:{cw:80,ch:136,ay:132,rows:3,cols:4},linky:{cw:72,ch:112,ay:108,rows:3,cols:4},luthien:{cw:84,ch:124,ay:120,rows:3,cols:4},
+  elf:{cw:96,ch:152,ay:148,rows:3,cols:4},griffin:{cw:152,ch:180,ay:176,rows:3,cols:4},owl:{cw:52,ch:56,ay:52,rows:3,cols:4},hat:{cw:56,ch:68,ay:64,rows:3,cols:4},
+  // seated poses: row 0 = front, row 1 = side (facing left)
+  merricksit:{cw:84,ch:148,ay:144,rows:2,cols:4},rosiesit:{cw:56,ch:116,ay:112,rows:2,cols:4},theosit:{cw:68,ch:124,ay:120,rows:2,cols:4},
+  mabelsit:{cw:68,ch:124,ay:120,rows:2,cols:4},finnsit:{cw:56,ch:100,ay:96,rows:2,cols:4},luthiensit:{cw:80,ch:120,ay:116,rows:2,cols:4},linkysit:{cw:72,ch:108,ay:104,rows:2,cols:4}
 };
+const SITS={merrick:{f:1,s:1},rosie:{f:0,s:1},theo:{f:1,s:0},mabel:{f:1,s:1},finn:{f:1,s:1},luthien:{f:1,s:1},linky:{f:1,s:1}}; // which seated views exist
+// the four plaza benches: seat = feet spot when seated, node = approach node, dir/flip = which way the sitter faces
+const BENCHES=[{node:'BN1',seat:[182,138],dir:'down',flip:false,occ:null},{node:'BN2',seat:[300,138],dir:'down',flip:false,occ:null},
+  {node:'BN3',seat:[172,196],dir:'side',flip:true,occ:null},{node:'BN4',seat:[310,197],dir:'side',flip:false,occ:null}];
 const TIPS={merrick:{down:[-8.3,-25.6],up:[7.2,-24.4],side:[-8.5,-24.9]},finn:{down:[-7.3,-13.5],up:[-6.7,-12.8],side:[-7,-14]}}; // staff / wand tip offsets from the feet anchor (side = facing left)
 function loadImg(src){return new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src;});}
 
@@ -207,6 +219,7 @@ const chars=[];     // everything that is drawn with depth sorting
 const villagers=[];
 let queue=[];       // customers at the stall, index 0 = at counter
 let wellBusy=null,juniper=null,merrick=null,rosie=null,theo=null,mabel=null,finn=null,cat=null,dog=null,dragon=null,frog=null;
+let helm=null,linky=null,luthien=null,griffin=null,owl=null,hatObj=null,elf=null;
 const particles=[];
 const floaters=[]; // floating text {text,x,y,vy,life,max,c}
 const bubbles=[];  // speech bubbles {o,text,life}
@@ -224,12 +237,12 @@ function spark(x,y,c,o){o=o||{};if(particles.length>520)return;
 function burst(x,y,n,o){o=o||{};for(let i=0;i<n;i++){const a=rnd()*6.283,v=rr(o.v0||10,o.v1||34);spark(x,y,o.c||pick(MAGIC),{vx:Math.cos(a)*v,vy:Math.sin(a)*v*.8-(o.up||8),ay:o.ay!==undefined?o.ay:18,life:rr(.5,1.3),s:o.s||1,gl:o.gl});}}
 function puff(x,y,c,n){for(let i=0;i<n;i++)if(particles.length<520){const life=rr(.7,1.2);particles.push({k:'puff',x:x+rr(-2,2),y,vx:rr(-8,8),vy:rr(-16,-4),ay:-4,life,max:life,c,s:rr(1.6,3.2),add:false,ph:0});}}
 function floatText(text,x,y,c){floaters.push({text,x,y,vy:-9,life:2.1,max:2.1,c:c||'#fff6c8'});}
-function say(o,text,life){for(let i=bubbles.length-1;i>=0;i--)if(bubbles[i].o===o)bubbles.splice(i,1);bubbles.push({o,text,life:life||4.2,max:life||4.2});}
+function say(o,text,life,px){for(let i=bubbles.length-1;i>=0;i--)if(bubbles[i].o===o)bubbles.splice(i,1);bubbles.push({o,text,life:life||4.2,max:life||4.2,px:!!px});}
 
 // ---------- characters ----------
 function mkVillager(id,name,role,speed,start,opt){
   const p=N[start];
-  const v={id,name,role,kind:'villager',sheet:id,x:p[0],y:p[1],dir:'down',flip:false,state:'idle',timer:rr(.5,3),route:[],speed,spd0:speed,
+  const v={id,name,role,kind:'villager',sheet:opt.sheet||id,spf:0,turnT:0,chatCd:rr(10,28),kick:0,x:p[0],y:p[1],dir:'down',flip:false,state:'idle',timer:rr(.5,3),route:[],speed,spd0:speed,
     animT:0,alpha:1,item:null,itemT:0,act:'out and about',node:start,opt,sy:0,squash:1,last:null,lookT:rr(2,5),h:(opt.h||28)*CS,stride:(opt.stride||4)*CS,shadowW:(opt.sw||7.6)*CS};
   villagers.push(v);chars.push(v);return v;
 }
@@ -248,7 +261,7 @@ function freeRing(v){
   const taken=new Set(villagers.filter(o=>o!==v&&o.ringNode).map(o=>o.ringNode));
   const c=RING.filter(n=>!taken.has(n));return pick(c.length?c:RING);
 }
-const STROLL_NODES=Object.keys(N).filter(k=>!['JB','MA','MB','D4'].includes(k));
+const STROLL_NODES=Object.keys(N).filter(k=>!['JB','MA','MB','D4','BN1','BN2','BN3','BN4'].includes(k));
 function faceCounter(v){ // customers face the stall's counter (the first one stands in front of it, the rest queue along the front)
   if(v.qi===0){v.dir='up';v.flip=false;}else{v.dir='side';v.flip=true;}
 }
@@ -259,6 +272,8 @@ function chooseActivity(v){
   const ok=k=>{
     if(k==='stall')return juniper&&juniper.state==='post'&&queue.length<3&&!v.item;
     if(k==='well')return !wellBusy;
+    if(k==='bench')return !!pickBench(v);
+    if(k==='friend')return villagers.some(o=>o!==v&&o!==juniper&&o.alpha===1&&(o.state==='walk'||o.state==='idle'));
     return true;};
   const cand=keys.filter(ok);let r=rnd()*cand.reduce((s,k)=>s+w[k],0);
   let act=cand[0];for(const k of cand){r-=w[k];if(r<=0){act=k;break;}}
@@ -281,6 +296,14 @@ function chooseActivity(v){
   else if(act==='portal'){v.phase='toPortal';v.act='off to study the portal stone';goTo(v,'PT');}
   else if(act==='fly'){startFly(v);}
   else if(act==='practice'){v.state='practice';v.timer=rr(6,9);v.dir=rnd()<.5?'down':'side';v.flip=rnd()<.5;v.pT=0;v.pN=0;v.act='practising sparks';v.misfire=rnd()<.4;v.mis=false;}
+  else if(act==='bench'){const b=pickBench(v);
+    if(!b){v.phase='stroll';v.act='out for a stroll';v.strollN=pick(STROLL_NODES.filter(k=>k!==v.node));goTo(v,v.strollN);}
+    else{b.occ=v;v.bench=b;v.phase='toBench';v.act='heading to a bench';goTo(v,b.node,[b.seat]);}}
+  else if(act==='friend'){const c=villagers.filter(o=>o!==v&&o!==juniper&&o.alpha===1&&(o.state==='walk'||o.state==='idle'));const o=pick(c);
+    v.phase='toFriend';v.act='going to find '+o.name;goTo(v,nearestNode(o.x,o.y));}
+  else if(act==='patrol'){const t=pick(rnd()<.65?['B1','B2','B3','GS']:['RN','RE','RW','RS','EG','WG']);
+    v.phase='patrol';v.act=['B1','B2','B3','GS'].includes(t)?'patrolling the bridge':'patrolling the courtyard';v.patrolN=t;goTo(v,t);}
+  else if(act==='poke'){const t=pick(POKE_NODES.filter(k=>k!==v.node));v.phase='toPoke';v.act='looking for something to poke';goTo(v,t);}
   else{ // stroll: two random nodes
     v.phase='stroll';v.act='out for a stroll';v.strollN=pick(STROLL_NODES.filter(k=>k!==v.node));goTo(v,v.strollN);
   }
@@ -301,6 +324,11 @@ function arrive(v){ // end of a route
   else if(ph==='toMush'){v.node=v.destNode;v.state='tend';v.timer=rr(6,10);v.dir='side';v.flip=v.destNode==='MB';v.act='tending the glowing flower beds';v.tT=0;}
   else if(ph==='toPortal'){v.node='PT';v.state='inspect';v.timer=rr(7,10);v.dir='up';v.flip=false;v.act='studying the portal stone';v.iT=0;portal.want=true;}
   else if(ph==='stroll'){v.node=v.destNode;if(rnd()<.4){v.strollN=pick(STROLL_NODES.filter(k=>k!==v.node));goTo(v,v.strollN);}else{v.state='idle';v.timer=rr(1.5,4);v.dir='down';}}
+  else if(ph==='toBench'){const b=v.bench;v.node=v.destNode;v.state='sit';v.timer=rr(14,26);v.dir=b.dir;v.flip=b.flip;v.act='resting on a bench';}
+  else if(ph==='leaveBench'){v.state='idle';v.timer=rr(1,2.5);v.dir='down';v.act='out and about';}
+  else if(ph==='toFriend'){v.node=v.destNode;v.state='idle';v.timer=rr(3,6);v.dir='down';v.act='looking for a chat';}
+  else if(ph==='patrol'){v.node=v.destNode;v.state='idle';v.timer=rr(6,11);v.dir=rnd()<.5?'down':'side';v.flip=rnd()<.5;v.act=v.act.replace('patrolling','keeping watch over');}
+  else if(ph==='toPoke'){v.node=v.destNode;v.state='poke';v.timer=rr(4.5,6.5);v.dir='side';v.flip=rnd()<.5;v.pT=0;v.pN=0;v.found=false;v.willFind=rnd()<.4;v.cheering=false;v.act='poking around in the grass';}
   else {v.state='idle';v.timer=rr(1,3);v.dir='down';}
 }
 function tipOf(v){ // wand/staff tip in world coords
@@ -318,23 +346,29 @@ function startFly(v){ // Mabel hops onto her broom and flies to a random spot on
   v.flip=p[0]>v.x;v.act='whizzing about on her broom';v.alpha=1;v.dir='side';v.lift=0;
 }
 function updateVillager(v,dt){
-  v.speed=v.spd0;
+  v.speed=v.spd0;v.chatCd-=dt;v.turnT=Math.max(0,v.turnT-dt);v.kick=Math.max(0,v.kick-dt);
+  if(v.state!=='walk'){v.spf=0;v.hx=undefined;}
   switch(v.state){
+    case 'chat':updateChat(v,dt);break;
+    case 'sit':v.timer-=dt;if(v.timer<=0)standUp(v);break;
+    case 'poke':{
+      v.timer-=dt;v.pT+=dt;
+      if(!v.cheering){
+        if(v.pT>(v.pN+1)*1.05&&v.pN<5){v.pN++;v.kick=.3;const fl=v.dir==='side'?(v.flip?1:-1):0,sx=v.x+fl*10*CS*1.3,sy=v.y+1;
+          for(let i=0;i<7;i++)spark(sx+rr(-3,3),sy-rr(0,3),pick(['#7fcf5b','#a8e07a','#4a8f3b','#d8f0a0']),{vx:rr(-14,14),vy:rr(-26,-8),ay:50,life:rr(.4,.8)});
+          puff(sx,sy,'rgba(110,170,70,.6)',2);}
+        if(v.timer<=0){if(v.willFind&&!v.found){v.found=true;v.cheering=true;v.timer=1.3;gemFind(v);}
+          else{v.state='idle';v.timer=rr(1,2.5);v.dir='down';v.act='out and about';}}
+      }else if(v.timer<=0){v.cheering=false;v.state='idle';v.timer=rr(1,2.5);v.dir='down';v.act='out and about';}
+      break;}
     case 'idle':
       v.timer-=dt;v.lookT-=dt;
       if(v.lookT<=0){v.lookT=rr(2,5);if(rnd()<.5){v.dir='side';v.flip=rnd()<.5;}else{v.dir='down';}}
       if(v.timer<=0){chooseActivity(v);}
       break;
     case 'walk':{
-      const t=v.route[0];if(!t){arrive(v);break;}
-      let dx=t[0]-v.x,dy=t[1]-v.y;const d=Math.hypot(dx,dy),st=v.speed*dt;
-      if(d<=st){v.x=t[0];v.y=t[1];v.route.shift();if(!v.route.length){arrive(v);}}
-      else{v.x+=dx/d*st;v.y+=dy/d*st;
-        // direction with hysteresis so diagonals don't flicker
-        const ax=Math.abs(dx),ay=Math.abs(dy);
-        if(v.dir==='side'){ if(ay>ax*1.6)v.dir=dy>0?'down':'up'; else v.flip=dx>0; }
-        else{ if(ax>ay*1.6){v.dir='side';v.flip=dx>0;} else v.dir=dy>0?'down':'up'; }
-        v.animT+=st/v.stride;}
+      if(!v.route.length){arrive(v);break;}
+      if(stepWalk(v,dt))arrive(v);
       break;}
     case 'enter':
       v.timer-=dt;v.alpha=Math.max(0,v.timer/.55);v.y-=dt*4;
@@ -413,9 +447,269 @@ function updateVillager(v,dt){
   if(v.item){v.itemT-=dt;if(v.itemT<=0&&v.state!=='inside')v.item=null;}
 }
 
+// ---------- round 6: eased walking, chats, benches, Linky's poking ----------
+function stepWalk(v,dt){ // eased start/stop, smoothed heading; returns true once the whole route is finished
+  const t=v.route[0];if(!t)return true;
+  const last=v.route.length===1;
+  const dx=t[0]-v.x,dy=t[1]-v.y,d=Math.hypot(dx,dy);
+  v.spf=Math.min(1,(v.spf||0)+dt/.3);
+  const f=last?Math.min(v.spf,.3+d/9):v.spf;
+  const st=v.speed*f*dt;
+  if(d<=(last?st+.05:Math.max(st,2.4))){if(last){v.x=t[0];v.y=t[1];}v.route.shift();return v.route.length===0;}
+  let hx=dx/d,hy=dy/d;
+  if(v.hx===undefined){v.hx=hx;v.hy=hy;}
+  const k=(last&&d<12)?1:1-Math.exp(-dt*9);
+  v.hx+=(hx-v.hx)*k;v.hy+=(hy-v.hy)*k;const hl=Math.hypot(v.hx,v.hy)||1;
+  const ux=v.hx/hl,uy=v.hy/hl;
+  v.x+=ux*st;v.y+=uy*st;
+  const ax=Math.abs(ux),ay=Math.abs(uy),od=v.dir,of=v.flip;
+  if(v.dir==='side'){if(ay>ax*1.6)v.dir=uy>0?'down':'up';else v.flip=ux>0;}
+  else{if(ax>ay*1.6){v.dir='side';v.flip=ux>0;}else v.dir=uy>0?'down':'up';}
+  if(v.dir!==od||(v.dir==='side'&&v.flip!==of))v.turnT=.16;
+  v.animT+=st/v.stride;
+  return false;
+}
+function faceTo(v,o){const dx=o.x-v.x,dy=o.y-v.y;if(Math.abs(dx)>Math.abs(dy)*1.2){v.dir='side';v.flip=dx>0;}else v.dir=dy>0?'down':'up';}
+const CHAT={
+  merrick:["Did you see that comet? Probably my fault.","I lost my staff again. It was in my hand.","Seventeen spells today, only two exploded.","Fireworks are just tidying up, but louder.","A good nap is the strongest magic I know."],
+  rosie:["My potion smells like strawberries now!","Don't taste the blue one. Or do. Once.","Bubbles mean it's working. Mostly.","Do you have a pinch of moonlight?"],
+  theo:["My mushrooms glow extra bright today.","The moonflowers gossip at midnight.","Mud is just soil with ambition.","I talk to the beds. They talk back."],
+  mabel:["In my day, brooms ran on tea.","Mind the hedges, dear.","Hush. The kettle is thinking.","I once out-flew a thunderstorm."],
+  finn:["I only blew up a little bit!","Watch this! ...Never mind.","Sparks are most of magic, I think.","Do wands get tired?"],
+  helm:["All quiet on the bridge.","Halt! ...Oh, hello. Carry on.","My armor squeaks. It's called character.","Dragon sighted. It's only Ember. Stand down."],
+  linky:["I found something shiny in the grass!","That pot looks suspicious. I'll poke it.","Yah! ...I mean, hello.","Do you hear a chime? Gems nearby!"],
+  luthien:["What a delightful day for a stroll.","My parasol has seen things.","Do mind the ducks. They gossip.","One must walk with poise. Or snacks."]
+};
+function chatOK(v){
+  return v!==juniper&&v.alpha===1&&(v.state==='walk'||v.state==='idle')&&v.chatCd<=0&&!['toQueue','toWell','toBench','leaveBench'].includes(v.phase)&&!bubbles.some(b=>b.o===v);
+}
+function startChat(a,b){
+  const dur=rr(8.5,10.5);
+  [[a,b,[.4,6]],[b,a,[3.2]]].forEach(([x,y,at])=>{
+    x.pre=x.state;x.act0=x.act;x.state='chat';x.partner=y;x.chatT=0;x.chatDur=dur;x.sayAt=at.slice();x.sayI=0;x.spf=0;x.hx=undefined;
+    x.act='chatting with '+y.name;faceTo(x,y);});
+}
+function updateChat(v,dt){
+  v.chatT+=dt;const p=v.partner;
+  if(v.sayAt.length&&v.chatT>=v.sayAt[0]){v.sayAt.shift();const L=CHAT[v.id]||["Lovely day!"];say(v,L[(rnd()*L.length)|0],2.9,true);}
+  if(p&&p.state==='chat')faceTo(v,p);
+  if(v.chatT>=v.chatDur||!p||p.state!=='chat'){
+    v.chatCd=rr(45,80);v.partner=null;
+    if(v.pre==='walk'&&v.route.length){v.state='walk';}else{v.state='idle';v.timer=rr(.6,1.8);}
+    v.act=v.pre==='walk'?(v.act0||'out and about'):'out and about';
+  }
+}
+let chatCheckT=2;
+function chatTick(dt){
+  chatCheckT-=dt;if(chatCheckT>0)return;chatCheckT=.4;
+  const el=villagers.filter(chatOK).concat(chatExtra().filter(chatOK));
+  for(let i=0;i<el.length;i++)for(let j=i+1;j<el.length;j++){
+    const a=el[i],b=el[j];
+    if(dist([a.x,a.y],[b.x,b.y])<34&&rnd()<.5){startChat(a,b);return;}
+  }
+}
+function chatExtra(){return [];} // (hook)
+function nearestNode(x,y){let best=null,bd=1e9;for(const k of STROLL_NODES){const d=Math.hypot(N[k][0]-x,N[k][1]-y);if(d<bd){bd=d;best=k;}}return best;}
+function pickBench(v){
+  const S=SITS[v.id];if(!S)return null;
+  const c=BENCHES.filter(b=>!b.occ&&((b.dir==='down'&&S.f)||(b.dir==='side'&&S.s)));
+  return c.length?pick(c):null;
+}
+function standUp(v){
+  const b=v.bench;if(b){b.occ=null;v.node=b.node;}
+  v.bench=null;v.route=[N[b.node].slice()];v.state='walk';v.phase='leaveBench';v.act='stretching after a rest';v.spf=0;
+}
+const POKE_NODES=['MA','MB','WP','W2','SE2','SW1','E2','WG2','SE1'];
+const GEMCOL=[['#55e07a','#1c7a3a'],['#5ab8ff','#1c4a9a'],['#ff6a6a','#8a1c2a'],['#c58cff','#5a2a9a']];
+function gemFind(v){
+  const g=pick(GEMCOL);
+  particles.push({k:'item',item:'gem',gc:g,x:v.x+(v.dir==='side'?(v.flip?8:-8):0),y:v.y-6,vx:0,vy:-46,ay:120,life:2.6,max:2.6,land:v.y+2,add:false,keep:true});
+  for(let i=0;i<8;i++)spark(v.x+rr(-6,6),v.y-4,pick(['#ffffff',g[0],'#fff6c8']),{vx:rr(-14,14),vy:rr(-28,-10),ay:40,life:rr(.5,1),gl:1});
+  floatText(pick(['Shiny!','A gem!','Ooh, sparkly!']),v.x,v.y-v.h-4,'#c8ffd8');
+  v.cheerT=1.1;
+}
+function pokeSpot(v){const t=v.pokeAt||[v.x,v.y+4];return t;}
+
+// ---------- round 6: flyers (griffin, post owl), the evening elf, shop hat, stream ring, fireworks ----------
+function bez(a,b,c,e){const u=1-e;return [u*u*a[0]+2*u*e*b[0]+e*e*c[0],u*u*a[1]+2*u*e*b[1]+e*e*c[1]];}
+function startLeg(o,p0,pc,p1,a0,a1,dur,mode){o.leg={p0,pc,p1,a0,a1,dur:Math.max(.5,dur),t:0,mode};o.state='fly';o.x=p0[0];o.y=p0[1];o.lift=a0;}
+function stepLeg(o,dt){ // returns true when the leg is finished
+  const L=o.leg;L.t+=dt;const u=clamp(L.t/L.dur,0,1);let e=u,ua=u;
+  if(L.mode==='land'){e=1-(1-u)*(1-u);ua=e;}
+  else if(L.mode==='takeoff'){e=u*u*(1.4-.4*u);ua=Math.min(1,u*2.6);ua=ua*ua*(3-2*ua);}
+  const p=bez(L.p0,L.pc,L.p1,e);
+  if(Math.abs(p[0]-o.x)>.01)o.fdir=p[0]>o.x?1:-1;
+  o.x=p[0];o.y=p[1];o.lift=lerp(L.a0,L.a1,ua)+(L.mode==='cruise'?Math.sin(L.t*2.1)*2.5:0);
+  return u>=1;
+}
+function edgePoint(left){return [left?-36:516,rr(40,240)];}
+const PERCHES=[{x:296,y:172,roof:false,txt:'resting at the courtyard edge'},{x:188,y:172,roof:false,txt:'resting at the courtyard edge'},{x:332,y:152,roof:false,txt:'resting by the east wall'},{x:366,y:45,roof:true,txt:"perched on Merrick's tower"}];
+function mkGriffin(){const g={kind:'griffin',sheet:'griffin',x:-80,y:90,flip:false,dir:'side',state:'away',timer:rr(14,24),alpha:0,sy:0,name:'Goldwing',role:'griffin',act:'soaring somewhere beyond the hills',h:26,lift:0,perch:null,leg:null,fdir:1,after:'away',shadowW:10};chars.push(g);return g;}
+function griffinGo(g,land){
+  const left=rnd()<.5,s=edgePoint(left);g.alpha=1;
+  if(land===false){const e=edgePoint(!left);startLeg(g,s,[240,rr(60,250)],e,44,40,dist(s,e)/54,'cruise');g.after='away';g.act='soaring over the village';return;}
+  const P=(land&&land!==true)?land:(rnd()<.4?PERCHES[3]:pick(PERCHES.slice(0,3)));
+  g.perch=P;startLeg(g,s,[(s[0]+P.x)/2,Math.min(s[1],P.y)-40],[P.x,P.y],44,0,dist(s,[P.x,P.y])/48,'land');g.after='perch';g.act='gliding in to land';
+}
+function griffinLeave(g){const left=rnd()<.5,e=edgePoint(left);const P=g.perch;
+  startLeg(g,[g.x,g.y],[g.x+(left?-30:30),g.y-60],e,0,44,dist([g.x,g.y],e)/50+1.2,'takeoff');g.after='away';g.act='taking off';
+  for(let i=0;i<10;i++)spark(g.x+rr(-8,8),g.y-6,pick(['#ffe27a','#fff6c8','#e8b84a']),{vx:rr(-18,18),vy:rr(-26,-6),ay:20,life:rr(.5,1)});}
+function updateGriffin(g,dt){
+  if(g.state==='away'){g.alpha=0;g.lift=0;g.act='soaring somewhere beyond the hills';g.timer-=dt;
+    if(g.timer<=0){if(nightK>.65){g.timer=8;}else griffinGo(g,rnd()<.62);}}
+  else if(g.state==='fly'){
+    if(stepLeg(g,dt)){
+      if(g.after==='perch'){g.state='perch';g.lift=0;g.x=g.perch.x;g.y=g.perch.y;g.timer=rr(14,24);g.act=g.perch.txt;g.flip=rnd()<.5;g.dir='side';burst(g.x,g.y-4,8,{c:'#ffe27a',v0:6,v1:18});}
+      else{g.state='away';g.alpha=0;g.x=-80;g.timer=rr(55,100);}}}
+  else if(g.state==='perch'){g.timer-=dt;if(g.timer<=0)griffinLeave(g);}
+}
+function drawGriffinAir(g,t){
+  const fl=g.fdir>0,rate=(g.after==='perch'&&g.leg&&g.leg.t>g.leg.dur-.9)?9:7;
+  drawSprite('griffin',0,Math.floor(t*rate)&3,g.x,g.y,{flip:fl,dy:-g.lift+Math.sin(t*5)*.5,alpha:g.alpha});
+}
+function drawGriffin(g,t){
+  if(g.alpha<=0)return;
+  if(!(g.state==='perch'&&g.perch&&g.perch.roof))shadow(g.x,g.y,Math.max(3,11-g.lift*.1),.22*Math.max(.2,1-g.lift/70));
+  if(g.state==='fly')return;
+  const m=(t*.55+g.x*.07)%9,col=m<4?0:m<5.2?1:m<6?2:m<7.4?0:3;
+  drawSprite('griffin',1,col,g.x,g.y,{flip:g.flip});
+}
+
+// ----- post owl (mornings) -----
+const LETTERS=[];
+function mkOwl(){const o={kind:'owl',sheet:'owl',x:-80,y:90,flip:false,state:'away',timer:rr(5,9),alpha:0,sy:0,name:'Hoot',role:'post owl',act:'off on a long flight',h:11,lift:0,leg:null,fdir:1,after:'away',door:null};chars.push(o);return o;}
+function owlWindow(){return hourNow>=6.2&&hourNow<=10.8;}
+function updateOwl(o,dt){
+  if(o.state==='away'){o.alpha=0;o.lift=0;if(owlWindow()){o.timer-=dt;
+      if(o.timer<=0){const d=pick(['D1','D2','D3']);o.door=d;const left=rnd()<.5,s=edgePoint(left),P=[N[d][0]+1,N[d][1]+1];
+        o.alpha=1;startLeg(o,s,[(s[0]+P[0])/2,Math.min(s[1],P[1])-34],P,28,0,dist(s,P)/46,'land');o.after='deliver';o.act='flying a letter to '+DOORNAME[d];}}
+    else o.timer=Math.max(o.timer,rr(4,9));}
+  else if(o.state==='fly'){if(stepLeg(o,dt)){
+      if(o.after==='deliver'){o.state='deliver';o.lift=0;o.timer=4.2;o.act='delivering a letter';o.x=o.leg.p1[0];o.y=o.leg.p1[1];o.flip=false;
+        LETTERS.push({x:o.x+9,y:o.y+1.5,t:0,life:28});for(let i=0;i<8;i++)spark(o.x+9+rr(-3,3),o.y-3,pick(['#fff6c8','#ffe27a']),{vx:rr(-10,10),vy:rr(-24,-8),ay:30,life:rr(.5,1)});eggFound('owl');}
+      else{o.state='away';o.alpha=0;o.timer=rr(80,140);}}}
+  else if(o.state==='deliver'){o.timer-=dt;if(o.timer<=0){const left=rnd()<.5,e=edgePoint(left);startLeg(o,[o.x,o.y],[o.x+(left?-20:20),o.y-45],e,0,26,dist([o.x,o.y],e)/52+1,'takeoff');o.after='away';o.act='heading home';}}
+}
+function drawOwlAir(o,t){drawSprite('owl',0,Math.floor(t*9)&3,o.x,o.y,{flip:o.fdir>0,dy:-o.lift+Math.sin(t*6)*.5,alpha:o.alpha});}
+function drawOwl(o,t){
+  if(o.alpha<=0)return;
+  shadow(o.x,o.y,Math.max(2,4-o.lift*.08),.18*Math.max(.2,1-o.lift/40));
+  if(o.state==='fly')return;
+  const m=(t*1.1)%6;drawSprite('owl',1,m<.2?1:m<3.2?0:m<3.9?2:m<4.6?3:0,o.x,o.y,{dy:o.state==='deliver'?-Math.abs(Math.sin(t*7))*.6:0});
+}
+function drawLetters(dt,t){
+  for(let i=LETTERS.length-1;i>=0;i--){const L=LETTERS[i];L.t+=dt;if(L.t>L.life){LETTERS.splice(i,1);continue;}
+    const a=Math.min(1,(L.life-L.t)/2,L.t*3+.01);ctx.globalAlpha=a;
+    const px=Math.round(L.x*R),py=Math.round((L.y-.4*Math.abs(Math.sin(L.t*3))*(L.t<1?1:0))*R),u=R*.9;
+    ctx.fillStyle='#8a6a3a';ctx.fillRect(px-3.1*u,py-2.1*u,6.2*u,4.2*u);ctx.fillStyle='#f6ecd0';ctx.fillRect(px-2.8*u,py-1.8*u,5.6*u,3.6*u);
+    ctx.fillStyle='#cdbb92';ctx.fillRect(px-2.8*u,py-.2*u,5.6*u,.5*u);ctx.fillStyle='#c0392b';ctx.fillRect(px-.7*u,py-.8*u,1.4*u,1.4*u);
+    if(((L.t*1.3)%2)<.25){ctx.fillStyle='#fff';ctx.fillRect(px+3*u,py-3*u,u,u);ctx.fillRect(px+2.2*u,py-2.6*u,2.6*u,u*.5);}
+    ctx.globalAlpha=1;}
+}
+
+// ----- evening elf traveler -----
+let elfDay=null;
+function todayKey(){if(HOUR_FLAG!==null)return 'demo';try{return new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});}catch(e){return new Date().toDateString();}}
+function elfWindow(){return hourNow>=18.3&&hourNow<=20.6;}
+function mkElf(){
+  const e=mkVillager('elf','Faelan','elf traveler',19,'PT',{h:37,stride:4.6,sw:8.4,w:{}});
+  villagers.splice(villagers.indexOf(e),1);e.alpha=0;e.state='gone';e.timer=rr(2,5);e.act='passing through';return e;
+}
+function updateElf(e,dt){
+  e.speed=e.spd0;e.turnT=Math.max(0,(e.turnT||0)-dt);
+  if(e.state!=='walk'){e.spf=0;e.hx=undefined;}
+  switch(e.state){
+    case 'gone':e.alpha=0;if(elfWindow()&&elfDay!==todayKey()){e.timer-=dt;
+        if(e.timer<=0){e.state='arrive';e.timer=1.1;e.x=N.PT[0];e.y=N.PT[1];e.dir='down';e.alpha=0;e.act='stepping out of the portal';portal.want=true;eggFound('elf');
+          burst(portal.hole[0],portal.hole[1]+8,16,{c:'#bfe6ff',v0:8,v1:30,gl:1});}}
+      else e.timer=rr(2,5);break;
+    case 'arrive':e.timer-=dt;e.alpha=clamp(1-e.timer/1.1,0,1);if(e.timer<=0){e.alpha=1;e.route=route('PT','RN').map(n=>N[n].slice());e.state='walk';e.phase='in';e.act='walking through the village';portal.want=false;}break;
+    case 'walk':
+      if(e.phase==='out'&&dist([e.x,e.y],N.PT)<85)portal.want=true;
+      if(stepWalk(e,dt)){
+        if(e.phase==='in'){e.state='pause';e.timer=rr(6,8);e.dir='down';e.act='admiring the fountain';e.lookT=1.5;}
+        else{e.state='vanish';e.timer=1.1;e.dir='up';e.act='slipping back through the portal';}}
+      break;
+    case 'pause':e.timer-=dt;e.lookT-=dt;
+      if(e.lookT<=0){e.lookT=rr(1.6,3);if(rnd()<.55){e.dir='side';e.flip=rnd()<.5;}else e.dir='down';}
+      if(e.timer<=0){e.route=route('RN','PT').map(n=>N[n].slice());e.state='walk';e.phase='out';e.act='walking on';}break;
+    case 'vanish':e.timer-=dt;e.alpha=clamp(e.timer/1.1,0,1);if(rnd()<dt*14)spark(e.x+rr(-4,4),e.y-rr(2,30),pick(['#bfe6ff','#ffffff','#d9b8ff']),{vx:rr(-6,6),vy:rr(-14,-4),life:rr(.5,.9),gl:1});
+      if(e.timer<=0){e.state='gone';e.alpha=0;elfDay=todayKey();portal.want=false;e.timer=rr(2,5);}break;
+  }
+}
+
+// ----- the old hat on Juniper's counter -----
+const HAT_LINES=["Hmm. Definitely a Tuesday hat.","Try me on! ...Actually, please don't. Itchy.","I see a future full of snacks.","A head with ideas? How rare!","Left or right? Say 'sparkly'.","I've been a hat for 300 years. Ask me anything. Not that.","Ooh, a fresh forehead!"];
+function mkHat(){const h={kind:'hat',sheet:'hat',x:408,y:163,state:'idle',timer:0,alpha:1,sy:0,name:'Old Hat',role:'shop hat',act:'sitting on the counter',h:12,blinkT:rr(2,4),lineI:0};chars.push(h);return h;}
+function hatTalk(h){if(h.state==='talk')return;h.lineI=(h.lineI+1+((rnd()*3)|0))%HAT_LINES.length;h.state='talk';h.timer=4;say(h,HAT_LINES[h.lineI],4,true);burst(h.x,h.y-10,10,{c:pick(MAGIC),v0:6,v1:22,gl:1});eggFound('hat');}
+function updateHat(h,dt){h.blinkT-=dt;if(h.blinkT<=-.2)h.blinkT=rr(2.4,5);if(h.state==='talk'){h.timer-=dt;if(h.timer<=0){h.state='cheer';h.timer=.7;}}else if(h.state==='cheer'){h.timer-=dt;if(h.timer<=0)h.state='idle';}}
+function drawHat(h,t){
+  shadow(h.x,h.y,5,.16);let row=0,col=0;
+  if(h.state==='talk'){row=1;col=(Math.floor(t*6)&1)?2:0;}
+  else if(h.state==='cheer'){row=2;col=(Math.floor(t*5)&1)?1:2;}
+  else col=h.blinkT<0?1:0;
+  drawSprite('hat',row,col,h.x,h.y,{dy:h.state==='cheer'?-Math.abs(Math.sin(t*9))*1.2:0});
+}
+
+// ----- a gold glint in the stream -----
+const RINGE={state:'hidden',x:0,y:0,t:0,next:rr(18,34),spots:[[330,262],[158,262],[300,266],[190,268]],life:7};
+const WHISPERS=["Psst... I'm not a wishing ring. Probably.","Shh. The ducks think I'm theirs.","Gold! Don't tell the frog.","Lost for ages. Thanks for finding me!","Careful. I'm very good at hiding."];
+function updateRing(dt){
+  if(RINGE.state==='hidden'){RINGE.next-=dt;if(RINGE.next<=0){const c=RINGE.spots.filter(p=>inWater(p[0],p[1],2));const p=c.length?pick(c):RINGE.spots[0];RINGE.x=p[0];RINGE.y=p[1];RINGE.state='glint';RINGE.t=0;}}
+  else if(RINGE.state==='glint'){RINGE.t+=dt;if(RINGE.t>RINGE.life){RINGE.state='hidden';RINGE.next=rr(70,130);}}
+}
+function ringVis(){return RINGE.state==='glint'?clamp(Math.min(RINGE.t/.8,(RINGE.life-RINGE.t)/1.2),0,1):0;}
+function drawRing(t){
+  const v=ringVis();if(v<.02)return;
+  const x=RINGE.x*R,y=RINGE.y*R;ctx.save();ctx.globalAlpha=v*.9;
+  ctx.strokeStyle='rgba(235,248,255,.5)';ctx.lineWidth=Math.max(1,R*.6);const ph=(t*.9)%1;ctx.beginPath();ctx.ellipse(x,y,(4+ph*5)*R,(1.6+ph*2)*R,0,0,6.283);ctx.stroke();
+  ctx.strokeStyle='#8a5a12';ctx.lineWidth=Math.max(2,R*1.9);ctx.beginPath();ctx.ellipse(x,y,2.6*R,1.7*R,0,0,6.283);ctx.stroke();
+  ctx.strokeStyle='#f6d34a';ctx.lineWidth=Math.max(1,R*1.2);ctx.beginPath();ctx.ellipse(x,y,2.6*R,1.7*R,0,0,6.283);ctx.stroke();
+  ctx.strokeStyle='#fff6c8';ctx.lineWidth=Math.max(1,R*.5);ctx.beginPath();ctx.ellipse(x,y,2.6*R,1.7*R,0,3.6,4.9);ctx.stroke();
+  ctx.restore();
+  const g=(Math.sin(t*4)*.5+.5);ctx.save();ctx.globalCompositeOperation='lighter';glow(RINGE.x,RINGE.y,7,'255,226,120',.35*v*(.6+.4*g));
+  const s=Math.max(1,Math.round(R)),px=Math.round(x+2.4*R),py=Math.round(y-2.2*R);ctx.globalAlpha=v*g;ctx.fillStyle='#fff';
+  ctx.fillRect(px,py-2*s,s,5*s);ctx.fillRect(px-2*s,py,5*s,s);ctx.restore();ctx.globalAlpha=1;
+}
+function ringTap(){
+  RINGE.state='hidden';RINGE.next=rr(60,110);eggFound('ring');
+  const x=RINGE.x,y=RINGE.y;
+  particles.push({k:'item',item:'ring',x,y:y-2,vx:rr(-6,6),vy:-64,ay:150,life:1.5,max:1.5,land:y+2,add:false,keep:false});
+  for(let i=0;i<14;i++)particles.push({k:'drop',x:x+rr(-4,4),y,vx:rr(-14,14),vy:rr(-34,-14),ay:90,life:.6,max:.6});
+  burst(x,y-4,22,{c:pick(['#ffe27a','#fff6c8','#f6d34a']),v0:8,v1:34,up:16,ay:22,gl:1});
+  const w=pick(WHISPERS);floaters.push({text:w,x:Math.min(Math.max(x,70),410),y:y-18,vy:-5,life:3.6,max:3.6,c:'#ffe9a0'});
+}
+
+// ----- Merrick's fireworks -----
+const FW={q:[],t:0,active:false,next:rr(30,50),taps:[]};
+const FWCOL=[['#ff5a5a','#ffd0a0','255,90,90'],['#5ac8ff','#d8f4ff','90,200,255'],['#ffe27a','#fff6c8','255,226,122'],['#c58cff','#ffd0f4','197,140,255'],['#6dffb0','#e0ffe8','109,255,176'],['#ff9de0','#ffffff','255,157,224']];
+function startFireworks(n){FW.q=[];let t=0;n=n||(6+((rnd()*4)|0));for(let i=0;i<n;i++){t+=rr(.4,.85);FW.q.push(t);}FW.t=0;FW.active=true;eggFound('fireworks');}
+function fwWindow(){return hourNow>=19.6&&hourNow<=22.4;}
+function launchRocket(){const col=pick(FWCOL),side=rnd()<.5?-1:1;
+  particles.push({k:'rocket',x:366+rr(-5,5),y:68,vx:side*rr(24,62),vy:rr(-38,-28),ay:9,life:rr(.75,1.05),max:1,c:col,add:true,ph:0});}
+function fwBurst(p){
+  if(particles.length>900)return;
+  const [c1,c2]=p.c,n=58+((rnd()*26)|0),kind=(rnd()*3)|0;
+  particles.push({k:'flash',x:p.x,y:p.y,vx:0,vy:0,ay:0,life:.4,max:.4,c:p.c[2],add:true});
+  for(let i=0;i<n;i++){const a=i/n*6.283+rnd()*.2,v=kind===0?46:rr(22,58),life=kind===2?rr(1.5,2.3):rr(1.0,1.6);
+    particles.push({k:'fw',x:p.x,y:p.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,ay:kind===2?22:14,life,max:life,c:i%3?c1:c2,rgb:p.c[2],add:true,ph:rnd()*6.28});}
+}
+function updateFireworks(dt){
+  if(fwWindow()&&!FW.active){FW.next-=dt;if(FW.next<=0){startFireworks();FW.next=rr(100,170);}}
+  if(FW.active){FW.t+=dt;while(FW.q.length&&FW.q[0]<=FW.t){FW.q.shift();launchRocket();}if(!FW.q.length&&FW.t>14)FW.active=false;
+    if(!FW.q.length)FW.active=particles.some(p=>p.k==='rocket');}
+}
+function towerTap(){
+  const now=performance.now();FW.taps=FW.taps.filter(t=>now-t<7000);FW.taps.push(now);
+  spark(366+rr(-3,3),72,pick(MAGIC),{vx:rr(-8,8),vy:rr(-18,-8),life:.8,gl:1});
+  if(FW.taps.length>=5&&!FW.active){FW.taps=[];startFireworks(7);}
+}
+// ----- found-egg memory (kept quietly, never shown) -----
+function eggFound(k){try{const a=JSON.parse(localStorage.getItem('efEggs')||'[]');if(!a.includes(k)){a.push(k);localStorage.setItem('efEggs',JSON.stringify(a));}}catch(e){}}
+
 // ---------- Juniper (shopkeeper) ----------
 function updateJuniper(v,dt){
-  v.speed=v.spd0;
+  v.speed=v.spd0;v.turnT=Math.max(0,v.turnT-dt);if(v.state!=='walk'){v.spf=0;v.hx=undefined;}
   if(v.state==='post'){
     v.x=N.JB[0];v.y=N.JB[1];if(v.serving){v.dir='side';v.flip=true;}else{v.dir=(Math.floor(tAcc/4)%3===2)?'side':'down';v.flip=true;}v.act=v.serving?'serving a customer':'minding the magic shop';
     v.breakT-=dt;
@@ -429,11 +723,7 @@ function updateJuniper(v,dt){
       if(v.phase==='break'){v.state='rest';v.timer=rr(5,9);v.dir='down';v.act='stretching her legs';}
       else{v.state='post';v.breakT=rr(70,130);}
       return;}
-    const dx=t[0]-v.x,dy=t[1]-v.y,d=Math.hypot(dx,dy),st=v.speed*dt;
-    if(d<=st){v.x=t[0];v.y=t[1];v.route.shift();}
-    else{v.x+=dx/d*st;v.y+=dy/d*st;const ax=Math.abs(dx),ay=Math.abs(dy);
-      if(v.dir==='side'){if(ay>ax*1.6)v.dir=dy>0?'down':'up';else v.flip=dx>0;}else{if(ax>ay*1.6){v.dir='side';v.flip=dx>0;}else v.dir=dy>0?'down':'up';}
-      v.animT+=st/v.stride;}
+    stepWalk(v,dt);
   }else if(v.state==='rest'){
     v.timer-=dt;
     if(v.timer<=0){v.state='walk';v.phase='return';v.route=route(v.breakNode||'E1','E1').map(n=>N[n].slice());v.route.push(N.JB.slice());v.act='heading back to the shop';}
@@ -717,19 +1007,19 @@ function drawSprite(sheetKey,row,col,x,y,o){
   const squash=o.squash||1;
   if(o.clip){srcH=Math.max(1,Math.round(sh.ay-o.clip*R));}
   const px=Math.round(x*R),py=Math.round(y*R+(o.dy||0)*R);
-  const th=Math.round(srcH*squash);
+  const th=Math.round(srcH*squash),tw=Math.round(sh.cw*(o.sx||1));
   ctx.save();
   if(o.alpha!==undefined&&o.alpha<1)ctx.globalAlpha=Math.max(0,o.alpha);
   if(o.flip){ctx.translate(px,0);ctx.scale(-1,1);}
-  const bx=o.flip?-Math.round(sh.cw/2):px-Math.round(sh.cw/2);
+  const bx=o.flip?-Math.round(tw/2):px-Math.round(tw/2);
   const top=py-sh.ay-(th-srcH);
   if(o.sway){ // upper body shifts a pixel or two (weight shift) while the legs stay planted
     const split=Math.round(srcH*.52),sw=Math.round(o.sway*R)*(o.flip?-1:1),hi=Math.round(th*split/srcH);
     ctx.drawImage(sh.c,sx,sy,sh.cw,split,bx+sw,top,sh.cw,hi);
     ctx.drawImage(sh.c,sx,sy+split,sh.cw,srcH-split,bx,top+hi,sh.cw,th-hi);
-  }else ctx.drawImage(sh.c,sx,sy,sh.cw,srcH,bx,top,sh.cw,th);
+  }else ctx.drawImage(sh.c,sx,sy,sh.cw,srcH,bx,top,tw,th);
   if(o.tint){ctx.filter='brightness(.4) saturate(.6)';ctx.globalAlpha=(o.alpha===undefined?1:o.alpha)*o.tint;
-    ctx.drawImage(sh.c,sx,sy,sh.cw,srcH,bx,top,sh.cw,th);ctx.filter='none';}
+    ctx.drawImage(sh.c,sx,sy,sh.cw,srcH,bx,top,tw,th);ctx.filter='none';}
   ctx.restore();
 }
 function shadow(x,y,w,a){
@@ -766,6 +1056,9 @@ function drawChar(c,t){
     case 'cat':case 'dog':case 'dragon':return drawAnimal(c,t);
     case 'frog':return drawFrog(c,t);
     case 'sweeper':return drawSweeper(c,t);
+    case 'griffin':return drawGriffin(c,t);
+    case 'owl':return drawOwl(c,t);
+    case 'hat':return drawHat(c,t);
   }
   const x=c.x,y=c.y;
   if(c.state==='fly'){
@@ -774,21 +1067,32 @@ function drawChar(c,t){
     drawSprite('mabelfly',0,f,x,y,{flip:c.flip,dy:-c.lift+Math.sin(t*7)*.6,alpha:c.alpha});
     return;
   }
+  if(c.state==='sit')return drawSit(c,t);
   shadow(x,y,c.shadowW,.2*c.alpha);
   let row=ROW[c.dir]||0,col=0,dy=0,sway=0;
   const walking=c.state==='walk';
-  if(walking){const f=Math.floor(c.animT)&3;col=f;dy=(f&1)?-1.1:0;if(c.dir!=='side'&&!(f&1))sway=(f===0?.6:-.6);}
+  if(walking){const f=Math.floor(c.animT)&3,bobK=(c.opt&&c.opt.bob)||1;col=f;dy=-1.1*bobK*(.5-.5*Math.cos(Math.PI*c.animT))*Math.min(1,(c.spf||0)*1.6);if(c.dir!=='side'&&!(f&1))sway=(f===0?.6:-.6)*Math.min(1,(c.spf||0)*1.6);}
   else{
     if(c.state==='buy'||(c===juniper&&c.serving))dy=-.5*Math.abs(Math.sin(t*5));
     else if(c.state==='cast'&&c.castT>.6&&c.castT<1.1)dy=-1.4;
     else if(c.state==='tend')dy=-.35*Math.abs(Math.sin(t*3));
     else if(c.state==='brew')dy=-.3*Math.abs(Math.sin(t*6));
+    else if(c.state==='chat'&&bubbles.some(b=>b.o===c))dy=-.4*Math.abs(Math.sin(t*7));
+    else if(c.state==='poke'&&c.cheering)dy=-1.4*Math.abs(Math.sin(t*10));
   }
   let dx=0;
+  if(c.state==='poke'&&c.kick>0&&c.dir==='side')dx=(c.flip?1:-1)*1.8*Math.sin(Math.PI*(1-c.kick/.3));
   if(c.state==='practice'&&c.mis)dx=Math.sin(t*50)*.5;
   const breathe=walking?1:1+.012*Math.sin(t*2+c.x);
-  drawSprite(c.sheet,row,col,x+dx,y,{flip:c.dir==='side'&&c.flip,alpha:c.alpha,dy,squash:(c.squash||1)*breathe,sway,tint:c.soot>0?Math.min(.65,c.soot*.5):0});
+  drawSprite(c.sheet,row,col,x+dx,y,{flip:c.dir==='side'&&c.flip,alpha:c.alpha,dy,sx:c.turnT>0?1-.2*Math.sin(Math.PI*(1-c.turnT/.16)):1,squash:(c.squash||1)*breathe,sway,tint:c.soot>0?Math.min(.65,c.soot*.5):0});
   if(c.item&&c.alpha>0)drawItem(c,x,y+dy);
+}
+function drawSit(c,t){
+  const key=c.sheet+'sit';
+  if(!sheetsR[key]){shadow(c.x,c.y,c.shadowW,.2);drawSprite(c.sheet,ROW[c.dir]||0,0,c.x,c.y,{flip:c.dir==='side'&&c.flip});return;}
+  const front=c.dir!=='side',m=(t*.8+c.x*.1)%7,col=m<.18?1:(m>3.4&&m<3.9?2:(m>5.5&&m<5.9?3:0));
+  shadow(c.x,c.y,c.shadowW*.8,.1);
+  drawSprite(key,front?0:1,col,c.x,c.y,{flip:!front&&c.flip,alpha:c.alpha});
 }
 function drawAnimal(a,t){
   const x=a.x,y=a.y;
@@ -841,8 +1145,9 @@ function drawDuck(d,t){
 function drawParticles(dt,pass){ // pass 0 = ordinary, 1 = additive
   for(let i=particles.length-1;i>=0;i--){
     const p=particles[i];
-    if(pass===0){p.life-=dt;if(p.life<=0){particles.splice(i,1);continue;}p.vy+=p.ay*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;
-      if(p.k==='item'&&p.y>=p.land&&p.vy>0){p.vy=0;p.vx=0;p.ay=0;p.y=p.land;if(p.life>.5)p.life=.5;}}
+    if(pass===0){p.life-=dt;if(p.life<=0){if(p.k==='rocket')fwBurst(p);particles.splice(i,1);continue;}p.vy+=p.ay*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;
+      if(p.k==='rocket'&&particles.length<800&&rnd()<.9)particles.push({k:'spark',x:p.x,y:p.y,vx:rr(-3,3),vy:rr(2,8),ay:10,life:rr(.25,.45),max:.4,c:p.c[1],s:.7,add:true,ph:0,gl:0});
+      if(p.k==='item'&&p.y>=p.land&&p.vy>0){p.vy=0;p.vx=0;p.ay=0;p.y=p.land;if(!p.keep&&p.life>.5)p.life=.5;}}
     if(!!p.add!==(pass===1))continue;
     const a=Math.min(1,p.life/p.max*1.6);
     ctx.globalAlpha=a;
@@ -858,9 +1163,24 @@ function drawParticles(dt,pass){ // pass 0 = ordinary, 1 = additive
       const s=Math.max(1,Math.round(R*p.s*(1-u*.4)));ctx.fillRect(Math.round(p.x*R),Math.round(p.y*R),s,s);
     }else if(p.k==='puff'){
       ctx.fillStyle=p.c;const s=Math.max(1,Math.round(R*p.s*(1+(1-p.life/p.max))));ctx.fillRect(Math.round(p.x*R-s/2),Math.round(p.y*R-s/2),s,s);
+    }else if(p.k==='fw'){
+      const u=p.life/p.max,tw=.75+.25*Math.sin(tAcc*25+p.ph),px=Math.round(p.x*R),py=Math.round(p.y*R),s=Math.max(2,Math.round(R*1.3));
+      ctx.globalAlpha=Math.min(1,u*1.8)*.45*tw;ctx.drawImage(glowSpr(p.rgb),px-4*R,py-4*R,8*R,8*R);
+      ctx.globalAlpha=Math.min(1,u*1.8)*tw;ctx.fillStyle=p.c;ctx.fillRect(px-s/2,py-s/2,s,s);ctx.fillStyle='#fff';if(u>.6)ctx.fillRect(px-s/4,py-s/4,s/2,s/2);
+    }else if(p.k==='rocket'){
+      ctx.fillStyle='#fff';const s=Math.max(1,Math.round(R*1.1));ctx.fillRect(Math.round(p.x*R),Math.round(p.y*R),s,s);ctx.fillStyle=p.c[0];ctx.fillRect(Math.round(p.x*R)-s,Math.round(p.y*R),s,s);
+    }else if(p.k==='flash'){
+      const u=p.life/p.max;ctx.globalAlpha=u*.85;ctx.drawImage(glowSpr(p.c),(p.x-22)*R,(p.y-22)*R,44*R,44*R);
     }else if(p.k==='item'){
       ctx.globalAlpha=Math.min(1,p.life*2);
-      if(p.item==='coin'){ctx.fillStyle='#f6d34a';ctx.fillRect(Math.round(p.x*R),Math.round(p.y*R),Math.max(2,R*2),Math.max(2,R*2));}
+      if(p.item==='gem'){const s=Math.max(1,R*1.1),px=Math.round(p.x*R),py=Math.round(p.y*R),W5=[1,3,5,3,1],W2=[0,1,3,1,0];
+        for(let r=-2;r<=2;r++){ctx.fillStyle=p.gc[1];ctx.fillRect(px-(W5[r+2]>>1)*s-s*.5,py+r*s,W5[r+2]*s,s);}
+        for(let r=-2;r<=2;r++)if(W2[r+2]){ctx.fillStyle=p.gc[0];ctx.fillRect(px-(W2[r+2]>>1)*s-s*.5,py+r*s,W2[r+2]*s,s);}
+        ctx.fillStyle='#fff';ctx.fillRect(px-s*1.5,py-s,s,s);
+        if(((tAcc*7)|0)%3===0){ctx.fillRect(px+2*s,py-3*s,s,3*s);ctx.fillRect(px+s,py-2*s,3*s,s);}}
+      else if(p.item==='ring'){const px=p.x*R,py=p.y*R;ctx.strokeStyle='#8a5a12';ctx.lineWidth=Math.max(2,R*1.9);ctx.beginPath();ctx.ellipse(px,py,2.6*R,2.4*R,0,0,6.283);ctx.stroke();
+        ctx.strokeStyle='#f6d34a';ctx.lineWidth=Math.max(1,R*1.2);ctx.stroke();}
+      else if(p.item==='coin'){ctx.fillStyle='#f6d34a';ctx.fillRect(Math.round(p.x*R),Math.round(p.y*R),Math.max(2,R*2),Math.max(2,R*2));}
       else drawItem({item:p.item,dir:'down',flip:false},p.x-7.5,p.y+10);
     }else{ctx.fillStyle='#f6d34a';ctx.fillRect(Math.round(p.x*R),Math.round(p.y*R),Math.max(1,R*1.2),Math.max(1,R*1.2));}
     ctx.globalAlpha=1;
@@ -894,8 +1214,8 @@ function drawAir(t){
 }
 // screen-space overlays: speech bubbles, floating text
 function toScreen(wx,wy){const k=view.z*R0/R;return [Math.round(W*R0/2-view.cx*R*k)+wx*R*k,Math.round(H*R0/2-view.cy*R*k)+wy*R*k];}
-function bubbleBox(text,sx,sy,fs,max){
-  ctx.font='600 '+fs+'px system-ui,sans-serif';
+function bubbleBox(text,sx,sy,fs,max,font){
+  ctx.font=font||('600 '+fs+'px system-ui,sans-serif');
   const words=text.split(' '),lines=[];let cur='';
   for(const w of words){const t=cur?cur+' '+w:w;if(ctx.measureText(t).width>max&&cur){lines.push(cur);cur=w;}else cur=t;}
   lines.push(cur);
@@ -912,6 +1232,16 @@ function drawScreen(dt){
     ctx.font='700 '+(13*bpc)+'px system-ui,sans-serif';ctx.textAlign='center';ctx.lineWidth=3*bpc;ctx.strokeStyle='rgba(40,20,80,.85)';ctx.strokeText(f.text,sx,sy);ctx.fillStyle=f.c;ctx.fillText(f.text,sx,sy);ctx.globalAlpha=1;ctx.textAlign='left';}
   for(let i=bubbles.length-1;i>=0;i--){const b=bubbles[i];b.life-=dt;if(b.life<=0){bubbles.splice(i,1);continue;}
     const [sx,sy]=toScreen(b.o.x,b.o.y-(b.o.lift||0)-b.o.h-1);
+    if(b.px){ // small pixel-style bubble (chats, hat)
+      const pfs=Math.max(9,10.5*bpc),bx=bubbleBox(b.text,sx,sy,pfs,cv.width*.3,'700 '+pfs+'px ui-monospace,Menlo,Consolas,monospace');
+      const u=Math.max(1,Math.round(bpc*1.3)),X=Math.round(bx.bx),Y=Math.round(bx.by),Wd=Math.round(bx.bw),Ht=Math.round(bx.bh);
+      ctx.globalAlpha=Math.min(1,b.life*3);
+      const nt=(x,y,w,h,col)=>{ctx.fillStyle=col;ctx.fillRect(x-u,y,w+2*u,h);ctx.fillRect(x,y-u,w,h+2*u);};
+      nt(X,Y,Wd,Ht,'#3a2a52');nt(X+u,Y+u,Wd-2*u,Ht-2*u,'#fffcee');
+      const tx=Math.round(clamp(sx,X+3*u,X+Wd-3*u));
+      ctx.fillStyle='#3a2a52';ctx.fillRect(tx-2*u,Y+Ht,4*u,2*u);ctx.fillRect(tx-u,Y+Ht+2*u,2*u,u);
+      ctx.fillStyle='#fffcee';ctx.fillRect(tx-u,Y+Ht-u,2*u,2*u);
+      ctx.fillStyle='#3a2a52';ctx.textBaseline='top';bx.lines.forEach((l,j)=>ctx.fillText(l,X+bx.pad,Y+bx.pad*.7+j*bx.lh));ctx.textBaseline='alphabetic';ctx.globalAlpha=1;continue;}
     const bx=bubbleBox(b.text,sx,sy,fs,cv.width*.34);ctx.globalAlpha=Math.min(1,b.life*3);
     ctx.fillStyle='rgba(255,252,238,.97)';ctx.strokeStyle='#5a3d7a';ctx.lineWidth=1.5*bpc;rrect(bx.bx,bx.by,bx.bw,bx.bh,fs*.6);ctx.fill();ctx.stroke();
     const tx=clamp(sx,bx.bx+fs,bx.bx+bx.bw-fs);
@@ -945,6 +1275,7 @@ function frame(ts){
     for(const d of ducks)updateDuck(d,dt);
     updateFrog(frog,dt);
     for(const s of sweepers)updateSweeper(s,dt);
+    chatTick(dt);updateGriffin(griffin,dt);updateOwl(owl,dt);updateElf(elf,dt);updateHat(hatObj,dt);updateRing(dt);updateFireworks(dt);
     updatePortal(dt);updateFountain(dt);
     wishT-=dt;if(wishT<=0){wishT=rr(45,90);wellWish();}
     if(nightK>.02)for(const f of fairies)updateFairy(f,dt);
@@ -960,7 +1291,7 @@ function frame(ts){
   ctx.imageSmoothingEnabled=Math.abs(k-1)>.001;
   ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
   ctx.drawImage(groundR,0,0);
-  drawPortalFx();
+  drawPortalFx();drawRing(tAcc);drawLetters(dt,tAcc);
   for(const c of chars)c.sy=c.y;
   const cs=chars.slice().sort((a,b)=>a.sy-b.sy);
   let ci=0;
@@ -969,6 +1300,7 @@ function frame(ts){
     ctx.drawImage(p.c,p.x,p.y);
   }
   while(ci<cs.length){drawChar(cs[ci],tAcc);ci++;}
+  for(const c of chars)if(c.state==='fly'&&c.alpha>0){if(c.kind==='griffin')drawGriffinAir(c,tAcc);else if(c.kind==='owl')drawOwlAir(c,tAcc);}
   drawParticles(dt,0);
   drawNight();
   drawGlows();
@@ -1004,6 +1336,7 @@ function propAt(wx,wy){ // interactive scenery
   if(wx>46&&wx<96&&wy>112&&wy<178)return 'well';
   if(Math.hypot((wx-FOUNTAIN.x)/42,(wy-(FOUNTAIN.y-6))/42)<1)return 'fountain';
   if(wx>384&&wx<448&&wy>218&&wy<310)return 'portal';
+  if(wx>338&&wx<396&&wy>4&&wy<128)return 'tower';
   return null;
 }
 function showTipFor(e,c){
@@ -1014,7 +1347,14 @@ function showTipFor(e,c){
   tip.style.left=Math.max(4,Math.min(sr.width-tip.offsetWidth-4,e.clientX-sr.left-tip.offsetWidth/2))+'px';
   tip.style.top=Math.max(4,e.clientY-sr.top-34)+'px';
 }
+const TAP={helm:["Halt! ...Just kidding. Hello, traveler.","The bridge is safe. I checked twice.","Shiny, isn't it? Polished it myself."],
+  linky:["Hey! Seen any shiny gems around?","I'm not poking you. Just the grass.","Nice day for an adventure!"],
+  luthien:["Good day to you, dear.","Do try the fountain. It's enchanting.","Mind your manners and your hat."],
+  griffin:["Skree!","Skreeeee! (Translation: hello.)"],elf:["Fair evening to you.","The stars will be out soon."],owl:["Hoo! Special delivery!","Hoo-hoo. Mail waits for no one."]};
 function react(c){ // tap reactions
+  if(c.id&&TAP[c.id]||c.kind==='griffin'||c.kind==='owl'){const L=TAP[c.id||c.kind];if(L&&c.alpha>0){say(c,pick(L),3,true);burst(c.x,c.y-(c.lift||0)-c.h*.8,6,{c:pick(MAGIC),v0:6,v1:18,gl:1});}
+    if(c.kind==='griffin'&&c.state==='perch')c.timer=Math.min(c.timer,2.2);return;}
+  if(c===hatObj){hatTalk(hatObj);return;}
   if(c===frog)frogTalk(frog);
   else if(c===merrick&&merrick.state!=='inside'&&merrick.state!=='fly'){castPose(merrick,pick(['stars','ring','petals']),3);}
   else if(c===dragon){flame(dragon);}
@@ -1031,12 +1371,14 @@ function onTap(e){
   const dbl=lt&&now-lt.t<360&&Math.hypot(e.clientX-lt.x,e.clientY-lt.y)<34&&lt.zoomed;
   ptr.lastTap={t:now,x:e.clientX,y:e.clientY,zoomed:wasZoomed};
   if(dbl){zoomOut();tip.style.display='none';return;}
+  if(ringVis()>.3&&Math.hypot(wx-RINGE.x,(wy-RINGE.y)*1.6)<9){ringTap();return;}
   const c=charAt(wx,wy);
   if(c){showTipFor(e,c);clearTimeout(showTipFor.t);showTipFor.t=setTimeout(()=>tip.style.display='none',2600);react(c);return;}
   const p=propAt(wx,wy);
   if(p==='well'){wellWish();return;}
   if(p==='fountain'){burst(FOUNTAIN.spout[0],FOUNTAIN.spout[1]+4,30,{v0:12,v1:48,up:26,ay:30,gl:1});floatText('Splash!',FOUNTAIN.spout[0],FOUNTAIN.spout[1]-8,'#cfeeff');return;}
   if(p==='portal'){portal.want=false;portal.state='opening';portal.t=0;portal.hold=7;return;}
+  if(p==='tower'){towerTap();return;}
   if(!wasZoomed)zoomAt(wx,wy,MAXZ); // tap empty ground: zoom in around that point
 }
 cv.addEventListener('pointerdown',e=>{
@@ -1073,7 +1415,7 @@ let rosterList=[];
 function buildPanel(){
   if(!roster)return;
   roster.innerHTML='';
-  rosterList=[merrick,rosie,theo,mabel,finn,juniper,dragon,frog,cat,dog];
+  rosterList=[merrick,rosie,theo,mabel,finn,juniper,helm,linky,luthien,griffin,dragon,frog,cat,dog];
   for(const c of rosterList){
     const li=document.createElement('li');li.innerHTML='<b></b> <i></i><span></span>';
     li.children[0].textContent=c.name;li.children[1].textContent=c.role;roster.appendChild(li);c.li=li;
@@ -1094,12 +1436,16 @@ async function start(){
   assets.bg=bgI;assets.occ=occI;
   const imgs=await Promise.all(names.map(n=>loadImg('assets/'+n+'.png')));
   names.forEach((n,i)=>{assets[n.replace('_sheet','')]=imgs[i];});
-  merrick=mkVillager('merrick','Merrick the Grey','wizard',17,'TD',{h:34,stride:4.4,sw:8.4,w:{cast:5,tower:3,portal:2,plaza:2,stroll:3,house:1,well:1,stall:1}});
-  rosie=mkVillager('rosie','Rosie','potion brewer',23,'E1',{h:28,stride:4,w:{house:3,stall:3,well:1,plaza:2,stroll:2,brew:3}});
-  theo=mkVillager('theo','Theo','moonflower grower',21,'W1',{h:30,stride:4.2,w:{house:2,stall:2,well:3,plaza:2,stroll:3,tend:4}});
-  mabel=mkVillager('mabel','Mabel','hedge witch',12,'RS',{h:28,stride:3.4,w:{house:3,stall:2,well:1,plaza:3,stroll:1,fly:2.5}});
-  finn=mkVillager('finn','Finn','apprentice mage',31,'RSE',{h:24,stride:3.2,sw:6.4,w:{house:1,stall:1,well:2,plaza:2,stroll:4,practice:4}});
+  merrick=mkVillager('merrick','Merrick the Grey','wizard',17,'TD',{h:34,stride:4.4,sw:8.4,w:{cast:5,tower:3,portal:2,plaza:2,stroll:3,house:1,well:1,stall:1,bench:1,friend:1.5}});
+  rosie=mkVillager('rosie','Rosie','potion brewer',23,'E1',{h:28,stride:4,w:{house:3,stall:3,well:1,plaza:2,stroll:2,brew:3,bench:1.2,friend:1.5}});
+  theo=mkVillager('theo','Theo','moonflower grower',21,'W1',{h:30,stride:4.2,w:{house:2,stall:2,well:3,plaza:2,stroll:3,tend:4,bench:1.2,friend:1.5}});
+  mabel=mkVillager('mabel','Mabel','hedge witch',12,'RS',{h:28,stride:3.4,w:{house:3,stall:2,well:1,plaza:3,stroll:1,fly:2.5,bench:1.5,friend:1.5}});
+  finn=mkVillager('finn','Finn','apprentice mage',31,'RSE',{h:24,stride:3.2,sw:6.4,w:{house:1,stall:1,well:2,plaza:2,stroll:4,practice:4,bench:1,friend:1.5}});
   juniper=mkVillager('juniper','Juniper','magic-item seller',21,'JB',{h:28,stride:4,w:{}});
+  helm=mkVillager('helm','Sir Helm','knight',17,'GS',{h:32,stride:4.2,sw:8.4,w:{patrol:6,plaza:1,stroll:1,friend:1.2}});
+  linky=mkVillager('linky','Linky','hero of the wild',28,'SE1',{h:26,stride:3.6,sw:7,w:{poke:5,stroll:3,plaza:1,house:1,stall:1,well:1,bench:1.2,friend:1.5}});
+  luthien=mkVillager('luthien','Lady Luthien','lady in waiting',15,'RNW',{h:30,stride:3.9,sw:8.6,bob:.45,w:{stroll:4,plaza:3,bench:2.5,house:1,stall:1,friend:3}});
+  elf=mkElf();griffin=mkGriffin();owl=mkOwl();hatObj=mkHat();
   juniper.state='post';juniper.breakT=rr(50,90);juniper.serving=null;juniper.act='minding the magic shop';
   cat=mkAnimal('cat',222,343);dog=mkAnimal('dog',306,172);dragon=mkAnimal('dragon',318,170);
   cat.timer=rr(1,3);dog.timer=rr(.5,2);dragon.timer=rr(.5,2);
@@ -1115,7 +1461,7 @@ async function start(){
   syncZoomUI();
   requestAnimationFrame(frame);
 }
-function trigger(what){ // test hooks: FV.trigger('portal'|'wish'|'flame'|'misfire'|'fly'|'cast'|'talk')
+function trigger(what,a){ // test hooks: FV.trigger('portal'|'wish'|'flame'|'misfire'|'fly'|'cast'|'talk')
   if(what==='portal'){portal.want=false;portal.state='opening';portal.t=0;portal.hold=8;}
   else if(what==='wish')wellWish();
   else if(what==='flame')flame(dragon);
@@ -1123,9 +1469,17 @@ function trigger(what){ // test hooks: FV.trigger('portal'|'wish'|'flame'|'misfi
   else if(what==='fly')startFly(mabel);
   else if(what==='cast')castPose(merrick,'stars',3.5);
   else if(what==='talk')frogTalk(frog);
+  else if(what==='griffin')griffinGo(griffin,a===undefined?false:(a===true?true:PERCHES[a]||true));
+  else if(what==='fireworks')startFireworks(a);
+  else if(what==='ring'){RINGE.next=0;}
+  else if(what==='ringtap'){RINGE.state='glint';RINGE.t=2;ringTap();}
+  else if(what==='sit'){const v=villagers.find(o=>o.id===a);const b=BENCHES[arguments[2]||0];if(v&&b&&!b.occ){b.occ=v;v.bench=b;v.state='sit';v.x=b.seat[0];v.y=b.seat[1];v.dir=b.dir;v.flip=b.flip;v.timer=60;v.act='resting on a bench';}}
+  else if(what==='chat'){const A=villagers.find(o=>o.id===a),B=villagers.find(o=>o.id===arguments[2]);if(A&&B){A.chatCd=B.chatCd=0;B.x=A.x+24;B.y=A.y;A.state=B.state='idle';A.timer=B.timer=5;startChat(A,B);}}
+  else if(what==='gem')gemFind(linky);
+  else if(what==='poke'){linky.state='walk';linky.phase='toPoke';linky.route=[];goTo(linky,'MA');}
 }
 window.addEventListener('resize',()=>{fit();});
-window.FV={N,EDGES,SLOTS,MAPS:()=>MAPS,inWater,ducks,villagers,chars,validateGraph,blocked,segClear,get R(){return R;},get R0(){return R0;},queue:()=>queue,view,items,LIGHTS,trigger,portal,particles,
+window.FV={BENCHES,PERCHES,RINGE,FW,get helm(){return helm;},get linky(){return linky;},get luthien(){return luthien;},get griffin(){return griffin;},get owl(){return owl;},get elf(){return elf;},get hat(){return hatObj;},LETTERS,bubbles,N,EDGES,SLOTS,MAPS:()=>MAPS,inWater,ducks,villagers,chars,validateGraph,blocked,segClear,get R(){return R;},get R0(){return R0;},queue:()=>queue,view,items,LIGHTS,trigger,portal,particles,
   setHour(h){hourNow=h;},get nightK(){return nightK;},zoomAt,zoomOut,fairies,wisps,lanterns,sweepers,get frog(){return frog;},get dragon(){return dragon;},get merrick(){return merrick;},get cat(){return cat;},get dog(){return dog;}};
 fit();
 start();

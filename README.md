@@ -1,7 +1,23 @@
-# Fun Village
+# Emberwood Village
+
+(Formerly "Fun Village". The repo and file names stay `fun-village`.)
 
 A cozy, dense, slightly magical pixel village for pure fun, drawn on a single 480x360 world view
 (scaled to fit the window in quarter steps, backing store at 2-3x so it stays sharp).
+
+## Round 6: new faces, livelier movement
+- **Renamed** to Emberwood Village (title, header, README). Repo and file names are unchanged.
+- **Movement**: walkers ease in and out of each stride, keep a smooth heading around corners, bob in step with the walk
+  frames and squash briefly when they turn. Villagers who meet on the path may stop, face each other and trade a few
+  short lines in small pixel speech bubbles. Some of them also walk to a plaza bench and sit for a while (hand-drawn
+  seated poses for Merrick, Rosie, Theo, Mabel, Finn, Lady Luthien and Linky).
+- **New villagers** (same sprite style and scale as the cast, stored at 4 px per world px): Sir Helm (knight, patrols the
+  bridge and courtyard), Linky (hero of the wild, pokes the grass and sometimes finds a gem) and Lady Luthien (lady in
+  waiting, strolls and chats). **Goldwing the griffin** flies over now and then with a shadow on the ground, and
+  sometimes lands on the courtyard edge or on Merrick's tower for a while.
+- A few hidden surprises are tucked into the village. Find them yourself.
+- Everything is still standalone (no trackers, no status links). `FV.trigger('griffin'|'chat'|'sit'|'fireworks'|...)`
+  are test hooks.
 
 ## Round 5: one painted scene
 The environment was rebuilt from the ground up. Instead of separate house/tree/fountain stickers on generated grass, the
@@ -52,7 +68,7 @@ in it); the portal stone is now a mossy carved arch on the south bank.
 - Villagers walk a waypoint graph (the dirt paths are drawn from the same graph), visit houses, queue at the
   magic shop, draw water at the well, brew, tend mushrooms, study the portal. Depth is sorted by feet y.
 - Testing flags: `?debug` shows obstacles and the path graph, `?speed=N` fast-forwards the simulation,
-  `?hour=H` fixes the time of day. `window.FV` exposes `trigger('wish'|'portal'|'cast'|'flame'|'talk'|'misfire'|'fly')`
+  `?hour=H` fixes the time of day. `window.FV` exposes `trigger('wish'|'portal'|'cast'|'flame'|'talk'|'misfire'|'fly'|'griffin'|'chat'|'sit'|'fireworks')`
   and `validateGraph()` for tests.
 - Pure client-side. Not connected to Bot Hollow or any status.json.
 
