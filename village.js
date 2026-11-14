@@ -1,6 +1,6 @@
 // Fun Village – denser environment pass using pixel assets.
 // Map simplified. Bots remain simple for this round.
-const W=480,H=320,VIEW_W=480;
+const W=480,H=320;
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');
 let S=2;
 function fit(){
@@ -14,9 +14,10 @@ window.addEventListener('resize',fit);fit();
 
 const assets={};
 function load(src,name){
-  return new Promise(r=>{
+  return new Promise((resolve,reject)=>{
     const img=new Image();
-    img.onload=()=>{assets[name]=img;r();};
+    img.onload=()=>{assets[name]=img;resolve();};
+    img.onerror=()=>resolve(); // continue even if one fails
     img.src=src;
   });
 }
@@ -30,42 +31,41 @@ async function loadAssets(){
   loop();
 }
 
-// Simplified denser layout positions
+// Fixed reasonable sizes and positions that fit the 480x320 view
 const layout=[
-  {img:'tree',x:40,y:30,s:0.35},
-  {img:'house1',x:80,y:60,s:0.28},
-  {img:'house2',x:220,y:50,s:0.28},
-  {img:'tree',x:360,y:20,s:0.35},
-  {img:'fountain',x:190,y:140,s:0.4},
-  {img:'house1',x:40,y:180,s:0.26},
-  {img:'house2',x:280,y:170,s:0.26},
-  {img:'tree',x:150,y:200,s:0.3},
-  {img:'tree',x:400,y:150,s:0.32}
+  {img:'tree',x:10,y:10,w:90,h:130},
+  {img:'house1',x:30,y:40,w:110,h:140},
+  {img:'house2',x:200,y:20,w:110,h:140},
+  {img:'tree',x:370,y:10,w:90,h:130},
+  {img:'fountain',x:180,y:130,w:120,h:100},
+  {img:'house1',x:20,y:170,w:100,h:130},
+  {img:'house2',x:280,y:150,w:100,h:130},
+  {img:'tree',x:140,y:190,w:80,h:110}
 ];
 
-function drawScene(t){
+function drawScene(){
   ctx.imageSmoothingEnabled=false;
+  // solid green ground
   ctx.fillStyle='#5fae4a';
   ctx.fillRect(0,0,cv.width,cv.height);
-  // simple ground variation
-  for(let i=0;i<40;i++){
-    ctx.fillStyle=Math.random()>0.5?'#6fbe52':'#4e9a40';
-    ctx.fillRect(Math.random()*cv.width,Math.random()*cv.height,4,4);
+  // light variation
+  ctx.fillStyle='#6fbe52';
+  for(let i=0;i<30;i++){
+    ctx.fillRect(Math.random()*cv.width,Math.random()*cv.height,3,3);
   }
   layout.forEach(o=>{
     const img=assets[o.img];
     if(!img)return;
-    const dw=img.width*o.s*S, dh=img.height*o.s*S;
-    ctx.drawImage(img,o.x*S,o.y*S,dw,dh);
+    ctx.drawImage(img, o.x*S, o.y*S, o.w*S, o.h*S);
   });
-  // simple bots placeholder
+  // simple bots
   ctx.fillStyle='#d9a020';
-  ctx.fillRect(120*S,100*S,8*S,10*S);
+  ctx.fillRect(140*S,110*S,8*S,10*S);
   ctx.fillStyle='#7a5aa8';
-  ctx.fillRect(250*S,120*S,8*S,10*S);
+  ctx.fillRect(260*S,130*S,8*S,10*S);
 }
 function loop(){
-  drawScene(performance.now());
+  drawScene();
   requestAnimationFrame(loop);
 }
 loadAssets();
