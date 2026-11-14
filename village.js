@@ -22,10 +22,10 @@ function load(src,name){
 }
 async function loadAssets(){
   await Promise.all([
-    load('assets/house1.jpg','house1'),
-    load('assets/house2.jpg','house2'),
-    load('assets/tree.jpg','tree'),
-    load('assets/fountain.jpg','fountain')
+    load('assets/house1.png','house1'),
+    load('assets/house2.png','house2'),
+    load('assets/tree.png','tree'),
+    load('assets/fountain.png','fountain')
   ]);
   loop();
 }
