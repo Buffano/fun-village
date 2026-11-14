@@ -45,18 +45,23 @@ const layout=[
 
 function drawScene(){
   ctx.imageSmoothingEnabled=false;
-  // solid green ground
+  // force clear to green
   ctx.fillStyle='#5fae4a';
   ctx.fillRect(0,0,cv.width,cv.height);
+  // debug red square so we know drawing works
+  ctx.fillStyle='#ff0000';
+  ctx.fillRect(10*S,10*S,40*S,40*S);
   // light variation
   ctx.fillStyle='#6fbe52';
-  for(let i=0;i<30;i++){
+  for(let i=0;i<20;i++){
     ctx.fillRect(Math.random()*cv.width,Math.random()*cv.height,3,3);
   }
   layout.forEach(o=>{
     const img=assets[o.img];
     if(!img)return;
-    ctx.drawImage(img, o.x*S, o.y*S, o.w*S, o.h*S);
+    try {
+      ctx.drawImage(img, o.x*S, o.y*S, o.w*S, o.h*S);
+    } catch(e) {}
   });
   // simple bots
   ctx.fillStyle='#d9a020';
