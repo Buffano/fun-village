@@ -9,9 +9,9 @@ h1{margin:0 0 8px;font-size:1.4rem}
 .foot{margin-top:24px;font-size:.75rem;opacity:.6}
 canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#5fae4a}
 @media (max-width:800px),(max-height:500px){
-  #wrap{flex-direction:column}
+  #wrap{flex-direction:column;height:auto;min-height:100%}
   #panel{width:100%;height:auto;border-left:0;border-top:1px solid #333}
-  #stage{height:60vh}
+  #stage{flex:none;height:min(60vh,calc(66.67vw + 16px))}
 }
 #tip{position:absolute;display:none;pointer-events:none;background:rgba(20,18,12,.88);color:#fff6dc;border:1px solid #8a6b3a;border-radius:6px;padding:4px 8px;font-size:12px;white-space:nowrap;z-index:5}
 #roster{list-style:none;margin:12px 0 0;padding:0;font-size:.8rem;line-height:1.35}
@@ -19,4 +19,8 @@ canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#5fae4a}
 #roster b{color:#ffe9a8}
 #roster i{opacity:.65;font-style:normal;margin-left:2px}
 #roster span{display:block;opacity:.85;font-size:.75rem}
-canvas{touch-action:manipulation}
+canvas{touch-action:manipulation;cursor:zoom-in}
+canvas.zoomed{touch-action:none;cursor:grab}
+#zoom{position:absolute;right:10px;bottom:10px;width:40px;height:40px;border-radius:50%;border:1px solid #8a6b3a;background:rgba(30,24,44,.82);color:#ffe9a8;font-size:24px;line-height:1;cursor:pointer;z-index:6;display:flex;align-items:center;justify-content:center;padding:0}
+#zoom:hover{background:rgba(60,44,90,.92)}
+.clock{font-size:.8rem;color:#ffe9a8;margin:-8px 0 12px}

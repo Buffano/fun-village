@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Fun Village · a tiny pixel place</title>
+<title>Fun Village · a tiny enchanted pixel place</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%8F%A1%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="wrap">
-  <div id="stage"><canvas id="c"></canvas><div id="tip" role="status"></div></div>
+  <div id="stage"><canvas id="c"></canvas><div id="tip" role="status"></div><button id="zoom" type="button" aria-label="Zoom in" title="Zoom in">+</button></div>
   <div id="panel">
     <h1>🏡 Fun Village</h1>
-    <div class="sub">A cozy, dense pixel village for pure fun.</div>
-    <div id="info">Tap or hover a villager or animal to say hello.</div>
+    <div class="sub">A cozy, dense pixel village with a little magic.</div>
+    <div id="clock" class="clock"></div>
+    <div id="info">Tap or hover a villager or creature to say hello. Tap the frog, the dragon, the well or the fountain. Tap empty ground to zoom in, drag to pan, double-tap to zoom out.</div>
     <ul id="roster"></ul>
     <div class="foot">Purely for fun. Code-drawn. No trackers.</div>
   </div>
