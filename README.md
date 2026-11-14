@@ -1,14 +1,15 @@
 # Fun Village
 
-Standalone 3-screen cozy pixel village for pure fun.
+A cozy pixel village for pure fun, drawn on a single dense 480x320 canvas view
+(scaled up by a whole-number factor to fit the window).
 
-- Based on the locked Bot Hollow layout template (expanded across 3 screens).
-- Matching sized simple sprites.
-- Code-drawn on canvas, nearest-neighbor.
-- Bots wander, can intersect (hooks ready for future events/scenarios).
-- Click near a bot to nudge it. Camera follows the group.
-- Not connected to Bot Hollow or any status.json. Pure client-side.
+- Scene: pixel-art houses, trees, a central fountain, a well, a market stall and a pond
+  (PNG sprites with real transparency in `assets/`, stored at 2x and drawn at half size
+  times the canvas scale), sorted by bottom edge for depth.
+- Ground: a fixed, seeded grass-and-path pattern built once, so nothing flickers.
+- Next: villagers and animals (character animation), then events and scenarios.
+- Pure client-side. Not connected to Bot Hollow or any status.json.
 
-Open index.html in a browser. Desktop and mobile friendly.
+Open `index.html` in a browser (or run `python3 -m http.server`). Desktop and mobile friendly.
 
-Events and scenarios to be built as we go.
+Note: GitHub Pages caches JS and images for a few minutes after a push. Hard-refresh if the old scene shows.
