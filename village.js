@@ -1,9 +1,9 @@
-// Fun Village – an enchanted, dense single-view scene (480x320 world) with walking villagers, a wizard,
-// magical creatures, day/night on real Eastern time and tap-to-zoom.
-// Ground + props are cached/pre-scaled per resolution; characters are animated with requestAnimationFrame
-// and depth-sorted with the props by their feet (bottom) y.
+// Fun Village – an enchanted village painted as ONE scene (480x360 world, painting at 2.4 px per world px) with walking
+// villagers, a wizard, magical creatures, day/night on real Eastern time and tap-to-zoom.
+// Walkable areas / water come from an embedded mask; a few foreground pieces (posts, banners, willow) are cut from the
+// painting as occluders and depth-sorted with the characters by their baseline y.
 'use strict';
-const W=480,H=320;
+const W=480,H=360;
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');
 const QS=new URLSearchParams(location.search);
 const DEBUG=QS.has('debug');
@@ -11,7 +11,7 @@ const TS=Math.max(1,Math.min(20,parseInt(QS.get('speed'))||1)); // ?speed=N fast
 const HOUR_FLAG=(QS.has('hour')&&isFinite(parseFloat(QS.get('hour'))))?(((parseFloat(QS.get('hour'))%24)+24)%24):null; // ?hour=H pins the clock (demo/testing)
 const K=4; // character sheets are stored at 4 px per world px
 let R0=2,R=2,css=2; // R0 = backing-store scale, R = cache scale (2*R0 while zoomed in), css = css px per world px
-let groundR=null,propsR=[],sheetsR={},broomUpR=null;
+let gradeR=null,groundR=null,propsR=[],sheetsR={},broomUpR=null;
 
 // ---------- tiny helpers ----------
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
@@ -24,22 +24,28 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 
 // ---------- walking graph (world coords = feet position) ----------
 const N={
-  N1:[206,137],N2:[240,139],N3:[276,141],NE:[306,152],E:[322,186],SE:[304,230],S:[240,240],SW:[186,242],SWM:[189,223],W:[172,209],
-  WELL:[160,202],W2:[109,207],W3:[106,150],W4:[109,272],W5:[110,292],
-  D1:[69,126],D2:[222,118],D3:[42,291],D4:[358,303],TD:[309,129],
-  P1:[318,252],P2:[326,303],PT:[444,313],
-  JB:[387,200],
-  MA:[94,168],MB:[48,309]
+  // plaza ring around the fountain
+  RN:[240,114],RNE:[273,138],RE:[298,160],RSE:[282,187],RS:[240,196],RSW:[200,187],RW:[182,162],RNW:[207,138],
+  // north gate + mossy cottage door, bridge, south bank
+  GN:[243,104],D2:[243,95],GS:[246,212],B1:[246,228],B2:[246,262],B3:[246,294],SJ:[248,314],
+  // west: gap in the plaza wall, the well, north-west cottage
+  WG:[150,164],WG2:[128,163.5],W1:[108,160],W2:[110,138],D1:[116,102],WELL:[74,184],WP:[100,182],MA:[100,127],
+  // east: gap in the plaza wall, tower, market stall
+  EG:[330,162],EG2:[352,167],E1:[372,180],E2:[388,197],TW:[367,148],TD:[363,126],JB:[385,177],
+  // south bank: cottage door, east path, portal stone
+  SW1:[205,338],SW2:[166,346],D3:[129,340],MB:[150,333],SE1:[300,347],SE2:[350,340],SE3:[385,328],PT:[409,320]
 };
-const EDGES=[['N1','N2'],['N2','N3'],['N3','NE'],['NE','E'],['E','SE'],['SE','S'],['S','SW'],['SW','SWM'],['SWM','W'],
-  ['N1','D2'],['W','WELL'],['WELL','W2'],['W2','W3'],['W3','D1'],['W2','W4'],['W4','W5'],['W5','D3'],
-  ['SE','P1'],['P1','P2'],['P2','D4'],['E','JB'],['NE','TD'],['P2','PT'],
-  ['W3','MA'],['W5','MB']];
-const HIDDEN=new Set(['W3-MA','W5-MB']); // short spurs to decor, not drawn as dirt
-const SLOTS=[[369,201],[352,204],[335,207],[318,210]]; // queue at the stall, slot 0 = at the counter
-const DOORS=['D1','D2','D3','D4','TD'];
-const DOORNAME={D1:'the north-west cottage',D2:'the north cottage',D3:'the south-west cottage',D4:'the south-east cottage',TD:"Merrick's tower"};
-const RING=['N2','N3','NE','E','SE','S','SW','SWM','W'];
+const EDGES=[
+  ['RN','RNE'],['RNE','RE'],['RE','RSE'],['RSE','RS'],['RS','RSW'],['RSW','RW'],['RW','RNW'],['RNW','RN'],
+  ['RN','GN'],['GN','D2'],['RS','GS'],['GS','B1'],['B1','B2'],['B2','B3'],['B3','SJ'],
+  ['RW','WG'],['WG','WG2'],['WG2','W1'],['W1','W2'],['W2','D1'],['W1','WP'],['WP','WELL'],['W2','MA'],
+  ['RE','EG'],['EG','EG2'],['EG2','E1'],['E1','E2'],['E1','TW'],['TW','TD'],['E1','JB'],
+  ['SJ','SW1'],['SW1','SW2'],['SW2','D3'],['SW2','MB'],['SJ','SE1'],['SE1','SE2'],['SE2','SE3'],['SE3','PT']];
+const HIDDEN=new Set(['W2-MA','SW2-MB']); // short spurs to flower beds, not special
+const SLOTS=[[400,198],[416,201],[432,203],[448,205]]; // queue at the stall, slot 0 = at the counter
+const DOORS=['D1','D2','D3','D4','TD'].filter(k=>N[k]);
+const DOORNAME={D1:'the north-west cottage',D2:'the mossy cottage',D3:'the cottage across the bridge',TD:"Merrick's tower"};
+const RING=['RN','RNE','RE','RSE','RS','RSW','RW','RNW'];
 const adj={};for(const k in N)adj[k]=[];
 for(const [a,b] of EDGES){adj[a].push(b);adj[b].push(a);}
 function route(a,b){ // Dijkstra over the small graph -> array of node names
@@ -49,83 +55,50 @@ function route(a,b){ // Dijkstra over the small graph -> array of node names
     for(const v of adj[u]){const nd=d[u]+dist(N[u],N[v]);if(nd<d[v]){d[v]=nd;prev[v]=u;}}}
   const out=[b];while(out[0]!==a&&prev[out[0]])out.unshift(prev[out[0]]);return out;
 }
-// obstacles = what feet must not enter (props' footprints / tree canopies)
-const OBST=[
-  {e:[240,192,66,41]},            // fountain
-  {r:[146,158,190,192]},          // well
-  {e:[251,281,54,30]},            // pond
-  {r:[34,0,142,116]},             // house 1
-  {r:[188,0,300,112]},            // house 2
-  {r:[6,184,106,284]},            // house 3
-  {r:[114,226,184,320]},          // tree (canopy+trunk)
-  {r:[334,204,428,300]},          // house 4
-  {r:[330,96,432,190]},           // magic stall (incl. counter)
-  {r:[290,0,346,122]},            // wizard's tower
-  {r:[0,0,82,112]},{r:[384,0,476,124]},{r:[436,150,480,248]}, // trees
-  {r:[425,266,463,308]},          // portal stone
-  {r:[86,152,102,166]},{r:[447,134,466,146]},{r:[124,170,144,184]},{r:[22,298,40,312]} // mushrooms / crystals / flowers
-];
+// ---------- walk / water mask (embedded PNG, 2 px per world px): R = feet may stand here, G = water ----------
+// blocked() = not walkable (buildings, trees, walls, benches, water, ...). Water is its own layer for ducks / the frog.
+let MAPS=null; // {w,h,d:Uint8ClampedArray}
+function loadMaps(){return new Promise(res=>{const im=new Image();im.onload=()=>{
+  const c=document.createElement('canvas');c.width=im.width;c.height=im.height;const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(im,0,0);
+  MAPS={w:im.width,h:im.height,d:x.getImageData(0,0,im.width,im.height).data,S:im.width/W};res();};im.onerror=()=>res();im.src=MAP_URI;});}
+function mapAt(x,y,ch){if(!MAPS)return 0;const ix=Math.floor(x*MAPS.S),iy=Math.floor(y*MAPS.S);if(ix<0||iy<0||ix>=MAPS.w||iy>=MAPS.h)return 0;return MAPS.d[(iy*MAPS.w+ix)*4+ch];}
+const PADPTS=[[1,0],[-1,0],[0,1],[0,-1],[.7,.7],[-.7,.7],[.7,-.7],[-.7,-.7]];
 function blocked(x,y,pad=0,bounds){
-  if(bounds&&(x<5||x>475||y<138||y>316))return true;
-  for(const o of OBST){
-    if(o.r){const r=o.r;if(x>r[0]-pad&&x<r[2]+pad&&y>r[1]-pad&&y<r[3]+pad)return true;}
-    else{const e=o.e;const dx=(x-e[0])/(e[2]+pad),dy=(y-e[1])/(e[3]+pad);if(dx*dx+dy*dy<1)return true;}
-  }
+  if(x<8||x>472||y<8||y>352)return true;
+  if(mapAt(x,y,0)<128)return true;
+  if(pad>0)for(const p of PADPTS)if(mapAt(x+p[0]*pad,y+p[1]*pad,0)<128)return true;
   return false;
 }
-function segClear(a,b,pad=0,bounds){const n=Math.ceil(dist(a,b)/3);for(let i=0;i<=n;i++){const t=i/n;if(blocked(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,pad,bounds))return false;}return true;}
-// door/stall/spur points are allowed inside blocks; only validate the ring/lane edges
-const SKIP_VALIDATE=new Set(['JB','TD','MA','MB']);
+function inWater(x,y,pad=0){ // ducks / frog: water with a margin
+  if(mapAt(x,y,1)<128)return false;
+  if(pad>0)for(const p of PADPTS)if(mapAt(x+p[0]*pad,y+p[1]*pad,1)<128)return false;
+  return true;
+}
+function segClear(a,b,pad=0,bounds){const n=Math.ceil(dist(a,b)/2);for(let i=0;i<=n;i++){const t=i/n;if(blocked(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,pad,bounds))return false;}return true;}
+// door / stall points sit right at the steps / counter and are checked as points, not along the edge into them
+const SKIP_VALIDATE=new Set(['JB']);
 function validateGraph(){
   const bad=[];
+  for(const k in N){if(!SKIP_VALIDATE.has(k)&&blocked(N[k][0],N[k][1]))bad.push('node '+k);}
   for(const [a,b] of EDGES){
     if(SKIP_VALIDATE.has(a)||SKIP_VALIDATE.has(b))continue;
     if(!segClear(N[a],N[b]))bad.push(a+'-'+b);
   }
+  for(const s of SLOTS)if(blocked(s[0],s[1]))bad.push('slot '+s);
   return bad;
 }
-
-// ---------- fixed seeded ground (built once at world resolution) ----------
-const ground=document.createElement('canvas');ground.width=W;ground.height=H;
-(function buildGround(){
-  const g=ground.getContext('2d',{willReadFrequently:true}),rnd=mulberry32(20261113);
-  g.fillStyle='#5fae4a';g.fillRect(0,0,W,H);
-  for(let i=0;i<70;i++){
-    const x=rnd()*W|0,y=rnd()*H|0,w=6+(rnd()*14|0),h=3+(rnd()*6|0);
-    g.fillStyle=rnd()<.5?'#68b84f':'#57a343';
-    g.fillRect(x,y,w,h);
-  }
-  // dirt paths follow the walking graph so villagers really walk on them
-  const segs=[];
-  for(const [a,b] of EDGES){if(a==='JB'||b==='JB'||HIDDEN.has(a+'-'+b))continue;segs.push([N[a][0],N[a][1],N[b][0],N[b][1],a==='W'||b==='WELL'||a==='W2'?4.5:4]);}
-  segs.push([N.E[0],N.E[1],SLOTS[3][0],SLOTS[3][1],4],[SLOTS[3][0],SLOTS[3][1],N.JB[0],N.JB[1],4]);
-  const id=g.getImageData(0,0,W,H),d=id.data,hr=mulberry32(77);
-  function dseg(px,py,s){const dx=s[2]-s[0],dy=s[3]-s[1],l=dx*dx+dy*dy;let t=l?((px-s[0])*dx+(py-s[1])*dy)/l:0;t=Math.max(0,Math.min(1,t));const x=s[0]+t*dx-px,y=s[1]+t*dy-py;return Math.hypot(x,y*1.3);}
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-    let best=(Math.hypot((x-240)/84,(y-192)/54)-1)*54; // plaza ellipse (signed approx distance)
-    for(const s of segs){const v=dseg(x,y,s)-s[4];if(v<best)best=v;}
-    const n=hr();
-    if(best<-1.5+n*1.2){const k=(best<-3?0:1);const base=k?[190,160,104]:[206,178,120];const j=(n*18)|0;
-      const p=(y*W+x)*4;d[p]=base[0]+j-9;d[p+1]=base[1]+j-9;d[p+2]=base[2]+j-9;}
-    else if(best<1.5&&n<.55){const p=(y*W+x)*4;d[p]=150;d[p+1]=170;d[p+2]=84;}
-  }
-  g.putImageData(id,0,0);
-  const gd=g.getImageData(0,0,W,H).data;
-  for(let i=0;i<260;i++){
-    const x=rnd()*W|0,y=rnd()*H|0,q=(y*W+x)*4;
-    if(gd[q]<120&&gd[q+1]>150){
-      const r=rnd();
-      if(r<.6){g.fillStyle='#4a9438';g.fillRect(x,y,1,2);g.fillRect(x+2,y+1,1,1);}
-      else if(r<.8){g.fillStyle='#7fd062';g.fillRect(x,y,2,1);}
-      else{g.fillStyle=['#f4f0e0','#f2d65a','#f08ab6','#b9a4f0'][rnd()*4|0];g.fillRect(x,y,2,2);g.fillStyle='#3f8a35';g.fillRect(x,y+2,1,1);}
-    }
-  }
-})();
+const PW=1152,PH=864; // painting size (px), world->painting scale = PW/W
+// generated by fv-tools/r5_layout.py: walk (R) / water (G) mask, 2 px per world px
+const MAP_URI='data:image/png;base64,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';
+// generated by fv-tools/r5_layout.py: occluder atlas layout (world px x/y, painting px w/h, atlas row ay, depth baseline sy)
+const OCC=[{"n": "postW", "x": 136.67, "y": 139.58, "w": 62, "h": 117, "ay": 0, "sy": 186}, {"n": "postE", "x": 332.5, "y": 139.58, "w": 48, "h": 120, "ay": 119, "sy": 189}, {"n": "lampN", "x": 159.58, "y": 26.67, "w": 36, "h": 141, "ay": 241, "sy": 84}, {"n": "fountain", "x": 202.5, "y": 114.17, "w": 185, "h": 163, "ay": 384, "sy": 182}, {"n": "willow", "x": 0.0, "y": 171.67, "w": 260, "h": 321, "ay": 549, "sy": 400}];
+const PAINT_S=2.4;
 
 // ---------- assets ----------
 const assets={};
-const PK={house1:2,house2:2,tree:2,fountain:2,well:2,pond:2,tower:3,magicstall:3,mushrooms:4,crystals:4,flowers:4,portal:4,lantern:4,broom:4}; // stored px per world px
+const PK={lantern:4,broom:4}; // stored px per world px for the little props that are still separate sprites
 const PROPS=Object.keys(PK);
+const CS=0.82; // character scale vs. the sheets (the painted doors are ~22 world px tall)
 const CHARS={ // sheet meta: cell w,h and feet anchor (sheet px), rows x cols; rows are front / back / side-left
   rosie:{cw:64,ch:116,ay:112,rows:3,cols:4},theo:{cw:76,ch:128,ay:124,rows:3,cols:4},mabel:{cw:68,ch:116,ay:112,rows:3,cols:4},
   finn:{cw:68,ch:100,ay:96,rows:3,cols:4},juniper:{cw:60,ch:116,ay:112,rows:3,cols:4},merrick:{cw:88,ch:140,ay:136,rows:3,cols:4},
@@ -135,48 +108,38 @@ const CHARS={ // sheet meta: cell w,h and feet anchor (sheet px), rows x cols; r
 };
 const TIPS={merrick:{down:[-8.3,-25.6],up:[7.2,-24.4],side:[-8.5,-24.9]},finn:{down:[-7.3,-13.5],up:[-6.7,-12.8],side:[-7,-14]}}; // staff / wand tip offsets from the feet anchor (side = facing left)
 function loadImg(src){return new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src;});}
-// x,y = top-left in world px, s = scale, sy = depth-sort y (feet line of the prop)
-const items=[
-  {k:'tree',    x:0,   y:0,   s:.9,  sy:108},
-  {k:'house1',  x:30,  y:6,   s:1,   sy:118},
-  {k:'house2',  x:188, y:0,   s:1,   sy:113},
-  {k:'tower',   x:288, y:-2,  s:1,   sy:123},
-  {k:'tree',    x:385, y:0,   s:1,   sy:118},
-  {k:'well',    x:140, y:118, s:.85, sy:191},
-  {k:'fountain',x:175, y:125, s:1,   sy:232},
-  {k:'magicstall',x:330,y:95, s:1,   sy:196},
-  {k:'house1',  x:8,   y:182, s:.88, sy:284},
-  {k:'tree',    x:116, y:230, s:.72, sy:313},
-  {k:'pond',    x:196, y:243, s:.9,  sy:254},
-  {k:'house2',  x:330, y:192, s:.88, sy:299},
-  {k:'tree',    x:438, y:150, s:.78, sy:240},
-  // magical density
-  {k:'mushrooms',x:84, y:142, s:1,  sy:166},
-  {k:'crystals', x:446,y:120, s:1,  sy:146},
-  {k:'mushrooms',id:'m2',x:20,y:288,s:1,sy:312},
-  {k:'flowers',  x:124,y:164, s:1,  sy:184},
-  {k:'portal',   x:427,y:268, s:1,  sy:306,fx:'portal'}
-];
+
+// ---------- key spots in the painting (world px) ----------
+const FOUNTAIN={x:240,y:160,spout:[240,123]};   // centre of the basin / top of the jet
+const WELLPT={x:74,y:176,pump:[74,184],splash:[74,168]}; // well front (feet spot) and water surface
+const PADS=[[353,257],[367,254],[347,262],[328,267],[317,278],[172,268]]; // lily pads (frog hops between them)
+const POOLS=[{x0:286,x1:382,y0:236,y1:288},{x0:104,x1:218,y0:238,y1:292}]; // swimmable boxes (also masked by the water layer): right pool, left pool
+const GARDENS=[[100,127],[88,119],[126,312],[150,333],[196,98],[205,332]]; // flower beds (sparkles, Theo, fairies)
+// foreground pieces cut from the painting (see fv-tools/r5_layout.py): drawn after the characters standing behind their baseline sy
+const items=OCC.map(o=>({k:'occ_'+o.n,occ:o,x:o.x,y:o.y,sy:o.sy}));
 items.sort((a,b)=>a.sy-b.sy);
-const ITEM={};for(const o of items){const key=o.id||o.k;if(!ITEM[key])ITEM[key]=o;}
+const ITEM={};for(const o of items){if(!ITEM[o.k])ITEM[o.k]=o;}
 function item(k){return ITEM[k];}
 
-// light sources per prop (local world px at scale 1 from the prop's top-left): x,y,radius,kind(,strength). w=warm lamp/window, others magic
+// light sources (world px): x,y,radius,kind(,strength). w = warm window / lantern, others magic
 const LCOL={w:'255,196,104',v:'196,140,255',i:'120,226,255',g:'255,226,120',p:'255,150,200',f:'100,196,255',t:'104,255,208',r:'110,186,255',o:'255,170,90'};
-const LIGHTS_BY={
-  house1:[[84,89,14,'w'],[6,93,12,'w'],[12,93,12,'w'],[47,62,11,'w']],
-  house2:[[40,38,12,'w'],[25,84,12,'w'],[47,87,12,'w'],[42,54,11,'w'],[86,85,11,'w']],
-  tower:[[22,46,20,'w',1.3],[35,49,11,'w'],[22,71,10,'w'],[22,87,10,'w'],[8,99,12,'w'],[49,17,11,'i'],[19,29,10,'i'],[43,31,9,'i'],[27,3,10,'g']],
-  magicstall:[[23,43,15,'w'],[82,58,13,'v'],[52,52,11,'v'],[66,54,11,'i'],[34,56,11,'p']],
-  well:[[30,56,13,'i']],
-  fountain:[[63,62,46,'f',.8],[63,14,18,'i']],
-  mushrooms:[[10,13,16,'t']],crystals:[[10,14,17,'v']],flowers:[[11,11,15,'p']],portal:[[17,19,17,'r']]
-};
-const LIGHTS=[]; // world-space, built after layout
-(function buildLights(){
-  for(const o of items){const L=LIGHTS_BY[o.k];if(!L)continue;
-    for(const l of L)LIGHTS.push({x:o.x+l[0]*o.s,y:o.y+l[1]*o.s,r:l[2]*o.s,c:LCOL[l[3]],magic:l[3]!=='w',a:l[4]||1,ph:Math.random()*6.28,fx:o.fx||null,k:o.k});}
-})();
+const LIGHT_SPEC=[
+  // north-west cottage (windows, door)
+  [66,48,12,'w'],[123,41,12,'w'],[137,67,11,'w'],[66,73,11,'w'],[112,78,12,'w'],
+  // mossy cottage
+  [249,45,12,'w'],[278,70,11,'w'],[303,45,11,'w'],[247,72,12,'w'],
+  // Merrick's tower (window glows, door)
+  [366,75,20,'w',1.3],[364,103,11,'w'],[366,60,9,'i'],
+  // south cottage
+  [83,298,11,'w'],[83,315,11,'w'],[127,295,10,'w'],[127,317,12,'w'],
+  // lanterns on posts / walls
+  [167,36,14,'w',.95],[40,98,13,'w',.95],[48,101,13,'w',.95],[157,106,12,'w',.9],
+  // stall potions, fountain, well, portal
+  [385,147,10,'i'],[399,148,11,'v'],[413,156,11,'p'],[427,162,10,'i'],[441,170,9,'v'],
+  [240,150,46,'f',.8],[240,124,18,'i'],[70,150,13,'i'],
+  [413,272,28,'r']
+];
+const LIGHTS=LIGHT_SPEC.map(l=>({x:l[0],y:l[1],r:l[2],c:LCOL[l[3]],magic:l[3]!=='w',a:l[4]||1,ph:Math.random()*6.28,fx:(l[3]==='r'&&l[2]===28)?'portal':null,k:(l[3]==='f'&&l[2]>30)?'fountain':'lamp'}));
 
 // ---------- scaling / layout / view ----------
 const view={z:1,cx:W/2,cy:H/2,tz:1,tcx:W/2,tcy:H/2};
@@ -200,16 +163,20 @@ function mk(w,h){const c=document.createElement('canvas');c.width=Math.max(1,w);
 let glowCache={};
 function rebuild(){
   glowCache={};
-  groundR=mk(W*R,H*R);const g=groundR.getContext('2d');g.imageSmoothingEnabled=false;g.drawImage(ground,0,0,W*R,H*R);
-  propsR=items.map(o=>{const img=assets[o.k];if(!img)return null;
-    const pk=PK[o.k],w=Math.round(img.width/pk*o.s*R),h=Math.round(img.height/pk*o.s*R);
-    const c=mk(w,h),x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(img,0,0,w,h);
-    return {c,x:Math.round(o.x*R),y:Math.round(o.y*R),sy:o.sy,fx:o.fx||null,o};}).filter(Boolean);
+  // the painting, scaled once per resolution (smooth scaling because the painting is 2.4 px per world px)
+  groundR=mk(W*R,H*R);const g=groundR.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';
+  if(assets.bg)g.drawImage(assets.bg,0,0,W*R,H*R);else{g.fillStyle='#6b8f45';g.fillRect(0,0,W*R,H*R);}
+  // occluders cut from the painting: scaled slices of the atlas
+  propsR=items.map(o=>{const img=assets.occ;if(!img)return null;const m=o.occ;
+    const w=Math.max(1,Math.round(m.w/PAINT_S*R)),h=Math.max(1,Math.round(m.h/PAINT_S*R));
+    const c=mk(w,h),x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';
+    x.drawImage(img,0,m.ay,m.w,m.h,0,0,w,h);
+    return {c,x:Math.round(o.x*R),y:Math.round(o.y*R),sy:o.sy,fx:null,o};}).filter(Boolean);
   sheetsR={};
   for(const k in CHARS){const img=assets[k];if(!img)continue;const m=CHARS[k];
-    const cw=Math.round(m.cw*R/K),ch=Math.round(m.ch*R/K);
+    const cw=Math.round(m.cw*R/K*CS),ch=Math.round(m.ch*R/K*CS);
     const c=mk(cw*m.cols,ch*m.rows),x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(img,0,0,cw*m.cols,ch*m.rows);
-    sheetsR[k]={c,cw,ch,ay:Math.round(m.ay*R/K)};}
+    sheetsR[k]={c,cw,ch,ay:Math.round(m.ay*R/K*CS)};}
   // two tinted duck variants (cream -> tan / grey-brown), made at load so they cost nothing per frame
   if(sheetsR.duck){
     for(const [nm,tint] of [['duck2','#c9a06a'],['duck3','#aab4c0']]){
@@ -263,7 +230,7 @@ function say(o,text,life){for(let i=bubbles.length-1;i>=0;i--)if(bubbles[i].o===
 function mkVillager(id,name,role,speed,start,opt){
   const p=N[start];
   const v={id,name,role,kind:'villager',sheet:id,x:p[0],y:p[1],dir:'down',flip:false,state:'idle',timer:rr(.5,3),route:[],speed,spd0:speed,
-    animT:0,alpha:1,item:null,itemT:0,act:'out and about',node:start,opt,sy:0,squash:1,last:null,lookT:rr(2,5),h:opt.h||28,stride:opt.stride||4,shadowW:opt.sw||7.6};
+    animT:0,alpha:1,item:null,itemT:0,act:'out and about',node:start,opt,sy:0,squash:1,last:null,lookT:rr(2,5),h:(opt.h||28)*CS,stride:(opt.stride||4)*CS,shadowW:(opt.sw||7.6)*CS};
   villagers.push(v);chars.push(v);return v;
 }
 function setRoute(v,names,extra){
@@ -281,7 +248,10 @@ function freeRing(v){
   const taken=new Set(villagers.filter(o=>o!==v&&o.ringNode).map(o=>o.ringNode));
   const c=RING.filter(n=>!taken.has(n));return pick(c.length?c:RING);
 }
-const STROLL_NODES=Object.keys(N).filter(k=>!['JB','MA','MB'].includes(k));
+const STROLL_NODES=Object.keys(N).filter(k=>!['JB','MA','MB','D4'].includes(k));
+function faceCounter(v){ // customers face the stall's counter (the first one stands in front of it, the rest queue along the front)
+  if(v.qi===0){v.dir='up';v.flip=false;}else{v.dir='side';v.flip=true;}
+}
 function castPose(v,kind,t){v.state='cast';v.phase='cast';v.timer=t;v.castT=0;v.flashed=false;v.dir='down';v.castKind=kind;v.act='casting '+({stars:'a sparkle spell',ring:'a ring of light',petals:'a shower of petals'}[kind]);}
 function chooseActivity(v){
   v.ringNode=null;
@@ -300,12 +270,12 @@ function chooseActivity(v){
   }else if(act==='stall'){
     v.phase='toQueue';v.act='browsing the magic shop';
     const qi=queue.length;queue.push(v);v.qi=qi;
-    const names=route(v.node,'E');setRoute(v,names.slice(names.length>1?1:0),[SLOTS[qi]]);v.node='E';
+    const names=route(v.node,'E2');setRoute(v,names.slice(names.length>1?1:0),[SLOTS[qi]]);v.node='E2';
   }else if(act==='well'){
     v.phase='toWell';v.act='going to the well';wellBusy=v;goTo(v,'WELL');
   }else if(act==='plaza'){
     const n=freeRing(v);v.ringNode=n;v.phase='toPlaza';v.act='enjoying the glowing fountain';goTo(v,n);
-  }else if(act==='tend'){v.phase='toMush';v.act='going to the glowing mushrooms';goTo(v,pick(['MA','MB']));}
+  }else if(act==='tend'){v.phase='toMush';v.act='going to the moonlit flower beds';goTo(v,pick(['MA','MB']));}
   else if(act==='brew'){const n=freeRing(v);v.ringNode=n;v.phase='toBrew';v.act='looking for a spot to brew';goTo(v,n);}
   else if(act==='cast'){castPose(v,pick(['stars','ring','petals']),rr(3,4.2));v.dir=rnd()<.5?'down':'side';v.flip=rnd()<.5;}
   else if(act==='portal'){v.phase='toPortal';v.act='off to study the portal stone';goTo(v,'PT');}
@@ -317,17 +287,18 @@ function chooseActivity(v){
 }
 function retargetQueue(){
   queue.forEach((c,i)=>{if(c.qi!==i){c.qi=i;
-    if(c.state==='queue'||c.state==='walk'&&c.phase==='toQueue'){c.route=[SLOTS[i].slice()];c.state='walk';}}});
+    if(c.state==='queue'){c.route=[SLOTS[i].slice()];c.state='walk';}
+    else if(c.state==='walk'&&c.phase==='toQueue'){if(c.route.length)c.route[c.route.length-1]=SLOTS[i].slice();else c.route=[SLOTS[i].slice()];}}});
 }
 function dropFromQueue(v){const i=queue.indexOf(v);if(i>=0){queue.splice(i,1);retargetQueue();}}
 function arrive(v){ // end of a route
   const ph=v.phase;
   if(ph==='toDoor'){v.state='enter';v.timer=.55;v.dir='up';v.flip=false;v.node=v.targetDoor;}
-  else if(ph==='toQueue'){v.state='queue';v.dir='side';v.flip=true;v.timer=0;}
+  else if(ph==='toQueue'){v.state='queue';faceCounter(v);v.timer=0;}
   else if(ph==='toWell'){v.state='pump';v.timer=rr(4,6);v.dir='up';v.flip=false;v.node='WELL';v.act='drawing water at the well';v.pumpT=0;v.splashT=0;}
   else if(ph==='toPlaza'){v.state='idle';v.timer=rr(5,11);v.dir='down';v.node=v.destNode;v.act='enjoying the glowing fountain';v.lookT=rr(1.5,3.5);}
   else if(ph==='toBrew'){v.node=v.destNode;v.state='brew';v.timer=rr(5,7);v.dir='down';v.act='brewing a bubbly potion';v.bT=0;}
-  else if(ph==='toMush'){v.node=v.destNode;v.state='tend';v.timer=rr(6,10);v.dir='side';v.flip=v.destNode==='MB';v.act='tending the glowing mushrooms';v.tT=0;}
+  else if(ph==='toMush'){v.node=v.destNode;v.state='tend';v.timer=rr(6,10);v.dir='side';v.flip=v.destNode==='MB';v.act='tending the glowing flower beds';v.tT=0;}
   else if(ph==='toPortal'){v.node='PT';v.state='inspect';v.timer=rr(7,10);v.dir='up';v.flip=false;v.act='studying the portal stone';v.iT=0;portal.want=true;}
   else if(ph==='stroll'){v.node=v.destNode;if(rnd()<.4){v.strollN=pick(STROLL_NODES.filter(k=>k!==v.node));goTo(v,v.strollN);}else{v.state='idle';v.timer=rr(1.5,4);v.dir='down';}}
   else {v.state='idle';v.timer=rr(1,3);v.dir='down';}
@@ -335,7 +306,7 @@ function arrive(v){ // end of a route
 function tipOf(v){ // wand/staff tip in world coords
   const T=TIPS[v.id];if(!T)return [v.x,v.y-v.h*.6];
   const t=T[v.dir]||T.down;const fl=(v.dir==='side'&&v.flip)?-1:1;
-  return [v.x+t[0]*fl,v.y+t[1]];
+  return [v.x+t[0]*fl*CS,v.y+t[1]*CS];
 }
 function startFly(v){ // Mabel hops onto her broom and flies to a random spot on a path
   const cand=[];
@@ -379,21 +350,21 @@ function updateVillager(v,dt){
       if(v.timer<=0){v.alpha=1;v.state='idle';v.timer=rr(.8,2);v.item=null;v.node=v.targetDoor;v.act='out and about';}
       break;
     case 'queue':
-      v.dir='side';v.flip=true;
+      faceCounter(v);
       if(v.qi===0&&juniper.state==='post'&&!juniper.serving&&!villagers.some(o=>o!==v&&o.alpha>0&&Math.hypot(o.x-SLOTS[0][0],o.y-SLOTS[0][1])<6)){juniper.serving=v;v.state='buy';v.timer=2.4;v.act='buying something magical';}
       break;
     case 'buy':
-      v.timer-=dt;v.dir='side';v.flip=true;
+      v.timer-=dt;v.dir='up';v.flip=false;
       if(v.timer<=0){
         v.item=pick(['potion','potionB','potionG','crystal','scroll']);v.itemT=rr(20,32);juniper.serving=null;
-        dropFromQueue(v);v.state='idle';v.timer=.4;v.dir='down';v.node='E';v.act='heading off with a treasure';
-        for(let i=0;i<5;i++)spark(SLOTS[0][0]+rr(-3,3),SLOTS[0][1]-12,pick(['#ffe27a','#fff6c8']),{vx:rr(-8,8),vy:rr(-28,-14),ay:50,life:.7});
+        dropFromQueue(v);v.state='idle';v.timer=.4;v.dir='down';v.node='E2';v.act='heading off with a treasure';
+        for(let i=0;i<5;i++)spark(SLOTS[0][0]+rr(-3,3),SLOTS[0][1]-12*CS,pick(['#ffe27a','#fff6c8']),{vx:rr(-8,8),vy:rr(-28,-14),ay:50,life:.7});
       }
       break;
     case 'pump':{
       v.timer-=dt;v.pumpT+=dt;v.splashT-=dt;v.dir='up';
       v.squash=1-.07*(.5+.5*Math.sin(v.pumpT*7));
-      if(v.splashT<=0&&v.pumpT>1.2){v.splashT=.35;const wx=165,wy=192;
+      if(v.splashT<=0&&v.pumpT>1.2){v.splashT=.35;const wx=WELLPT.splash[0],wy=WELLPT.splash[1];
         for(let i=0;i<5;i++)particles.push({k:'drop',x:wx+rr(-3,3),y:wy,vx:rr(-9,9),vy:rr(-24,-10),ay:90,life:.55,max:.55});}
       if(v.timer<=0){v.squash=1;v.item='bucket';v.itemT=rr(12,20);wellBusy=null;v.state='idle';v.timer=.8;v.dir='down';v.act='carrying water';if(rnd()<.22)wellWish();}
       break;}
@@ -422,7 +393,7 @@ function updateVillager(v,dt){
       break;}
     case 'tend':{ // Theo: glowing mushrooms
       v.timer-=dt;v.tT+=dt;
-      if(rnd()<dt*7){const o=v.destNode==='MA'?item('mushrooms'):item('m2');spark(o.x+10+rr(-8,8),o.y+13-rr(0,14),pick(['#7affd0','#b49cff','#8fe8ff']),{vx:rr(-2,2),vy:rr(-12,-5),ay:-1,life:rr(1,1.8),s:1});}
+      if(rnd()<dt*7){const o=N[v.destNode];spark(o[0]+rr(-9,9),o[1]-rr(0,10),pick(['#7affd0','#b49cff','#8fe8ff']),{vx:rr(-2,2),vy:rr(-12,-5),ay:-1,life:rr(1,1.8),s:1});}
       if(v.timer<=0){v.state='idle';v.timer=rr(.8,2);v.dir='down';v.act='out and about';v.item=null;}
       break;}
     case 'inspect':{ // Merrick at the portal
@@ -446,11 +417,11 @@ function updateVillager(v,dt){
 function updateJuniper(v,dt){
   v.speed=v.spd0;
   if(v.state==='post'){
-    v.x=N.JB[0];v.y=N.JB[1];if(v.serving){v.dir='side';v.flip=false;}else{v.dir=(Math.floor(tAcc/4)%3===2)?'side':'down';v.flip=false;}v.act=v.serving?'serving a customer':'minding the magic shop';
+    v.x=N.JB[0];v.y=N.JB[1];if(v.serving){v.dir='side';v.flip=true;}else{v.dir=(Math.floor(tAcc/4)%3===2)?'side':'down';v.flip=true;}v.act=v.serving?'serving a customer':'minding the magic shop';
     v.breakT-=dt;
     if(v.breakT<=0&&!v.serving&&queue.length===0){
       v.state='walk';v.phase='break';v.node='JB';v.act='taking a short break';
-      v.route=[N.E.slice(),N[v.breakNode=pick(['N3','E','S','W'])].slice()];
+      v.breakNode=pick(['RN','RE','RS','RW']);v.route=route('E1',v.breakNode).map(n=>N[n].slice());v.route.unshift(N.E1.slice());
     }
   }else if(v.state==='walk'){
     const t=v.route[0];
@@ -465,20 +436,20 @@ function updateJuniper(v,dt){
       v.animT+=st/v.stride;}
   }else if(v.state==='rest'){
     v.timer-=dt;
-    if(v.timer<=0){v.state='walk';v.phase='return';v.route=[N.E.slice(),N.JB.slice()];v.act='heading back to the shop';}
+    if(v.timer<=0){v.state='walk';v.phase='return';v.route=route(v.breakNode||'E1','E1').map(n=>N[n].slice());v.route.push(N.JB.slice());v.act='heading back to the shop';}
   }
 }
 
 // ---------- animals (cat, dog, baby dragon) ----------
-const ANIMAL={cat:{name:'Biscuit',role:'village cat',speed:17,h:14,sw:6,stride:3.2},dog:{name:'Pepper',role:'village dog',speed:23,h:15.5,sw:7,stride:3.4},
-  dragon:{name:'Ember',role:'baby dragon',speed:21,h:17,sw:7.5,stride:3.2}};
+const ANIMAL={cat:{name:'Biscuit',role:'village cat',speed:17,h:14*CS,sw:6*CS,stride:3.2*CS},dog:{name:'Pepper',role:'village dog',speed:23,h:15.5*CS,sw:7*CS,stride:3.4*CS},
+  dragon:{name:'Ember',role:'baby dragon',speed:21,h:17*CS,sw:7.5*CS,stride:3.2*CS}};
 function mkAnimal(kind,x,y){
   const A=ANIMAL[kind];
   const a={kind,sheet:kind,x,y,dir:'down',flip:false,state:'idle',timer:rr(1,4),tx:x,ty:y,speed:A.speed,animT:0,alpha:1,follow:null,followT:0,sy:0,name:A.name,role:A.role,act:'wandering',squash:1,h:A.h,shadowW:A.sw,stride:A.stride,lift:0,hoverT:0};
   chars.push(a);return a;
 }
 function pickWanderPoint(a){
-  for(let i=0;i<30;i++){const x=rr(14,466),y=rr(150,310);
+  for(let i=0;i<30;i++){const x=rr(14,466),y=rr(30,350);
     if(!blocked(x,y,6,1)&&dist([x,y],[a.x,a.y])<130&&segClear([a.x,a.y],[x,y],3,1)){return [x,y];}}
   return [a.x,a.y];
 }
@@ -536,21 +507,22 @@ function updateAnimal(a,dt){
 
 // ---------- ducks ----------
 const ducks=[];
-function mkDuck(i,x,y,sheet){
-  const d={kind:'duck',sheet,x,y,dir:'side',flip:i%2===0,state:'swim',timer:rr(1,3),tx:x,ty:y,speed:rr(5,8),animT:rr(0,4),alpha:1,sy:0,name:['Pip','Dot','Waddles'][i]||'Duck',role:'pond duck',act:'paddling about',dipT:0,clipWL:4.2,h:12.5};
+function poolPoint(P){for(let i=0;i<40;i++){const x=rr(P.x0,P.x1),y=rr(P.y0,P.y1);if(inWater(x,y,5))return [x,y];}return null;}
+function mkDuck(i,pool,sheet){
+  const P=POOLS[pool],p=poolPoint(P)||[(P.x0+P.x1)/2,(P.y0+P.y1)/2];
+  const d={kind:'duck',sheet,x:p[0],y:p[1],pool:P,dir:'side',flip:i%2===0,state:'swim',timer:rr(1,3),tx:p[0],ty:p[1],speed:rr(5,8),animT:rr(0,4),alpha:1,sy:0,name:['Pip','Dot','Waddles'][i]||'Duck',role:'stream duck',act:'paddling about',dipT:0,clipWL:4.2*CS,h:12.5*CS};
   ducks.push(d);chars.push(d);return d;
 }
 function updateDuck(d,dt){
-  const PX=251,PY=281,RX=26,RY=10;
   if(d.state==='swim'){
     const dx=d.tx-d.x,dy=d.ty-d.y,dd=Math.hypot(dx,dy);
     if(dd<1.5){d.timer-=dt;
       if(d.timer<=0){
         if(rnd()<.35){d.state='dip';d.dipT=0;d.act='dipping for snacks';}
-        else{const a=rnd()*6.283,r=Math.sqrt(rnd());d.tx=PX+Math.cos(a)*RX*r;d.ty=PY+Math.sin(a)*RY*r;d.timer=rr(1,4);d.speed=rr(5,9);}
+        else{const p=poolPoint(d.pool);if(p){d.tx=p[0];d.ty=p[1];}d.timer=rr(1,4);d.speed=rr(5,9);}
       }
-    }else{const st=d.speed*dt;d.x+=dx/dd*st;d.y+=dy/dd*st;
-      if(Math.abs(dx)>1.2)d.flip=dx>0; d.animT+=dt*3;}
+    }else{const st=Math.min(dd,d.speed*dt),nx=d.x+dx/dd*st,ny=d.y+dy/dd*st;
+      if(inWater(nx,ny,3)){d.x=nx;d.y=ny;if(Math.abs(dx)>1.2)d.flip=dx>0;d.animT+=dt*3;}else{d.tx=d.x;d.ty=d.y;d.timer=.3;}}
     d.animT+=dt*1.5;
   }else{
     d.dipT+=dt;
@@ -558,15 +530,14 @@ function updateDuck(d,dt){
   }
 }
 
-// ---------- talking frog (on the pond's lily pads) ----------
-const PADS=[[223,274],[266,271],[274,289],[228,292]];
-const FROG_LINES=["Ribbit. Have you tried turning the pond off and on again?","I was a prince once. The commute was worse.","Please don't kiss me. I've heard how that goes.",
-  "Fly of the day: delicious. Ten out of ten.","Merrick calls me a toad. I'm a frog. Words matter.","The water's enchanted. Mostly. Swim at your own risk.",
-  "I saw what Finn did. The pond saw everything.","Lily pads: the original comfy chair.","Pip, Dot and Waddles are great roommates. Loud, though.",
-  "Toll to cross my pond: one fly or one compliment.","I'd tell you a secret, but the koi gossip.","Hot take: Tuesdays are just short Mondays."];
+// ---------- talking frog (on the stream's lily pads) ----------
+const FROG_LINES=["Ribbit. Have you tried turning the stream off and on again?","I was a prince once. The commute was worse.","Please don't kiss me. I've heard how that goes.",
+  "Fly of the day: delicious. Ten out of ten.","Merrick calls me a toad. I'm a frog. Words matter.","The stream's enchanted. Mostly. Swim at your own risk.",
+  "I saw what Finn did. The stream saw everything.","Lily pads: the original comfy chair.","Pip, Dot and Waddles are great roommates. Loud, though.",
+  "Toll to cross my bridge: one fly or one compliment.","I'd tell you a secret, but the fish gossip.","Hot take: Tuesdays are just short Mondays."];
 function mkFrog(){
-  const p=PADS[0];
-  const f={kind:'frog',sheet:'frog',x:p[0],y:p[1],pad:0,state:'sit',timer:rr(3,6),alpha:1,sy:0,name:'Sir Ribbit',role:'talking frog',act:'sitting on a lily pad',h:11,flip:false,talkT:0,hop:null,blinkT:rr(2,4),lift:0,lineI:(rnd()*FROG_LINES.length)|0};
+  const p=PADS[2];
+  const f={kind:'frog',sheet:'frog',x:p[0],y:p[1],pad:2,state:'sit',timer:rr(3,6),alpha:1,sy:0,name:'Sir Ribbit',role:'talking frog',act:'sitting on a lily pad',h:11*CS,flip:false,talkT:0,hop:null,blinkT:rr(2,4),lift:0,lineI:(rnd()*FROG_LINES.length)|0};
   chars.push(f);return f;
 }
 function frogTalk(f){
@@ -574,10 +545,14 @@ function frogTalk(f){
   f.lineI=(f.lineI+1+((rnd()*3)|0))%FROG_LINES.length;
   f.state='talk';f.talkT=4.2;f.act='talking';say(f,FROG_LINES[f.lineI],4.2);
 }
+function nextPad(f){ // hop to a pad in the same pool within reach (the pad list spans both pools; the bridge keeps them apart)
+  const c=[];PADS.forEach((p,i)=>{if(i!==f.pad&&Math.hypot(p[0]-f.x,p[1]-f.y)<42)c.push(i);});
+  return c.length?pick(c):f.pad;
+}
 function updateFrog(f,dt){
   if(f.state==='sit'){
     f.timer-=dt;f.blinkT-=dt;
-    if(f.timer<=0){const np=(f.pad+1+((rnd()*3)|0))%PADS.length;f.hop={x0:f.x,y0:f.y,x1:PADS[np][0],y1:PADS[np][1],t:0,dur:.8,np};f.state='hop';f.act='hopping to another pad';f.flip=PADS[np][0]>f.x;}
+    if(f.timer<=0){const np=nextPad(f);f.hop={x0:f.x,y0:f.y,x1:PADS[np][0],y1:PADS[np][1],t:0,dur:.8,np};f.state='hop';f.act='hopping to another pad';f.flip=PADS[np][0]>f.x;}
   }else if(f.state==='talk'){f.talkT-=dt;if(f.talkT<=0){f.state='sit';f.timer=rr(5,9);f.act='sitting on a lily pad';}}
   else if(f.state==='hop'){
     const h=f.hop;h.t+=dt;const u=clamp(h.t/h.dur,0,1);f.x=lerp(h.x0,h.x1,u);f.y=lerp(h.y0,h.y1,u);f.lift=Math.sin(u*Math.PI)*9;
@@ -587,7 +562,7 @@ function updateFrog(f,dt){
 }
 
 // ---------- fairies, wisps, lanterns, sweeping brooms ----------
-function fairySpots(){return [[item('flowers').x+11,item('flowers').y+4],[item('mushrooms').x+10,item('mushrooms').y+2],[item('crystals').x+10,item('crystals').y+3],[240,138],[310,70],[160,128],[60,100],[400,230],[250,250],[330,160]];}
+function fairySpots(){return [[100,126],[126,314],[196,100],[240,128],[300,92],[165,60],[60,112],[395,330],[246,250],[330,200],[440,210],[205,330]];}
 function mkFairy(i){const sp=pick(fairySpots());return {row:i,x:sp[0]+rr(-10,10),y:sp[1]+rr(-10,10),tx:sp[0],ty:sp[1],ph:rnd()*9,spd:rr(13,20),t:rr(2,5),col:['255,160,220','150,215,255','255,226,130'][i]};}
 function updateFairy(f,dt){
   f.t-=dt;const dx=f.tx-f.x,dy=f.ty-f.y,d=Math.hypot(dx,dy);
@@ -596,13 +571,13 @@ function updateFairy(f,dt){
   f.x+=Math.sin(tAcc*2.2+f.ph)*.12;f.y+=Math.cos(tAcc*1.7+f.ph)*.1;
   if(nightK>.25&&rnd()<dt*7)spark(f.x+rr(-2,2),f.y+4,['#ffc8ee','#c8e8ff','#fff0b0'][f.row],{vx:rr(-3,3),vy:rr(2,8),ay:4,life:rr(.5,1),s:.9});
 }
-function mkWisp(){return {x:rr(20,460),y:rr(30,300),ph:rnd()*9,sp:rr(.15,.45),r:rr(.7,1.6),col:pick(['110,255,208','196,140,255','150,220,255','255,226,150'])};}
-function updateWisp(w,dt){w.x+=Math.cos(tAcc*w.sp+w.ph)*dt*5;w.y+=Math.sin(tAcc*w.sp*1.3+w.ph*1.7)*dt*4;if(w.x<8)w.x=472;if(w.x>472)w.x=8;if(w.y<10)w.y=310;if(w.y>312)w.y=10;}
-const LANTERN_ANCHORS=[[150,52,6],[372,66,5],[52,168,7],[428,244,6],[168,106,8],[250,98,6]];
+function mkWisp(){return {x:rr(20,460),y:rr(30,340),ph:rnd()*9,sp:rr(.15,.45),r:rr(.7,1.6),col:pick(['110,255,208','196,140,255','150,220,255','255,226,150'])};}
+function updateWisp(w,dt){w.x+=Math.cos(tAcc*w.sp+w.ph)*dt*5;w.y+=Math.sin(tAcc*w.sp*1.3+w.ph*1.7)*dt*4;if(w.x<8)w.x=472;if(w.x>472)w.x=8;if(w.y<10)w.y=350;if(w.y>352)w.y=10;}
+const LANTERN_ANCHORS=[[185,62,6],[332,64,5],[104,198,7],[392,338,6],[456,216,6],[212,90,6]];
 function mkLantern(a){return {x:a[0],y:a[1],ax:a[0],ay:a[1],ar:a[2],ph:rnd()*9,sp:rr(.18,.32)};}
 
 function mkSweeper(ax,ay,bx,by,sp){
-  const s={kind:'sweeper',x:ax,y:ay,ax,ay,bx,by,sp,dir:1,pause:rr(0,2),animT:0,alpha:1,sy:0,name:'Enchanted broom',role:'sweeps all by itself',act:'sweeping the path',h:22,shadowW:3.2,swish:0};
+  const s={kind:'sweeper',x:ax,y:ay,ax,ay,bx,by,sp,dir:1,pause:rr(0,2),animT:0,alpha:1,sy:0,name:'Enchanted broom',role:'sweeps all by itself',act:'sweeping the path',h:22*CS,shadowW:3.2*CS,swish:0};
   chars.push(s);sweepers.push(s);return s;
 }
 function updateSweeper(s,dt){
@@ -616,9 +591,9 @@ function updateSweeper(s,dt){
 }
 
 // ---------- portal stone ----------
-const portal={state:'closed',open:0,t:0,next:rr(10,22),want:false,hold:6,hole:[0,0,4.6,10.5]};
+const portal={state:'closed',open:0,t:0,next:rr(10,22),want:false,hold:6,hole:[413,272,10,25]};
 function updatePortal(dt){
-  const it=item('portal');portal.hole=[it.x+17,it.y+20,4.4,10.4];
+  portal.hole=[413,272,10,25];
   portal.t+=dt;
   if(portal.state==='closed'){portal.open=Math.max(0,portal.open-dt*3);portal.next-=dt;
     if(portal.next<=0||portal.want){portal.state='opening';portal.t=0;portal.hold=portal.want?9:rr(5,8);}}
@@ -636,8 +611,12 @@ function portalPulse(){ // 0..1 flicker used by the runes + swirl
   return clamp(f,0,1);
 }
 function drawPortalFx(){
-  const o=portal.open;if(o<=.02)return;
-  const [hx,hy,rx,ry]=portal.hole;const t=tAcc;
+  const o=portal.open;const [hx,hy,rx,ry]=portal.hole;const t=tAcc;
+  if(o<.98){ // closed: the painted swirl is dimmed to a dark, faintly runed gap in the stone
+    ctx.save();ctx.beginPath();ctx.ellipse(hx*R,(hy+.5)*R,(rx+.4)*R,(ry+.5)*R,0,0,6.283);ctx.clip();
+    const dg=ctx.createLinearGradient(0,(hy-ry)*R,0,(hy+ry)*R);dg.addColorStop(0,'rgba(18,12,34,'+(.8*(1-o))+')');dg.addColorStop(1,'rgba(30,20,52,'+(.7*(1-o))+')');
+    ctx.fillStyle=dg;ctx.fillRect((hx-rx-2)*R,(hy-ry-2)*R,(rx*2+4)*R,(ry*2+4)*R);ctx.restore();}
+  if(o<=.02)return;
   ctx.save();
   ctx.beginPath();ctx.ellipse(hx*R,hy*R,rx*R,ry*R*o,0,0,6.283);ctx.clip();
   const g=ctx.createRadialGradient(hx*R,hy*R,0,hx*R,hy*R,ry*R);
@@ -658,12 +637,12 @@ function drawPortalFx(){
 let fountainT=0,wishT=rr(25,50);
 function updateFountain(dt){
   fountainT+=dt;
-  const F=item('fountain'),sx=F.x+63,sy=F.y+14;
+  const sx=FOUNTAIN.spout[0],sy=FOUNTAIN.spout[1];
   if(rnd()<dt*7.5)spark(sx+rr(-1.5,1.5),sy+rr(0,4),MAGIC[((fountainT*1.7)|0)%MAGIC.length],{vx:rr(-6,6),vy:rr(-34,-20),ay:30,life:rr(.7,1.1),gl:1});
-  if(rnd()<dt*2.5){const a=rnd()*6.283;spark(sx+Math.cos(a)*30,sy+30+Math.sin(a)*13,pick(['#bff3ff','#e5d4ff']),{vx:0,vy:rr(-12,-6),ay:-1,life:rr(.9,1.5),s:.9});}
+  if(rnd()<dt*2.5){const a=rnd()*6.283;spark(FOUNTAIN.x+Math.cos(a)*34,FOUNTAIN.y+2+Math.sin(a)*19,pick(['#bff3ff','#e5d4ff']),{vx:0,vy:rr(-12,-6),ay:-1,life:rr(.9,1.5),s:.9});}
 }
 function wellWish(){
-  const w=item('well'),x=w.x+30*w.s,y=w.y+57*w.s;
+  const x=WELLPT.x,y=WELLPT.y-6;
   burst(x,y,26,{c:pick(['#fff3a8','#ffffff','#ffd86a']),v0:10,v1:44,up:20,ay:26,gl:1});
   for(let i=0;i<10;i++)spark(x+rr(-2,2),y,pick(MAGIC),{vx:rr(-8,8),vy:rr(-60,-36),ay:60,life:rr(.7,1.1),gl:1});
   floatText(pick(['A wish!','Wish granted!','Make a wish…','Ooh, shiny!']),x,y-22,'#fff6c8');
@@ -705,7 +684,7 @@ function drawNight(){
   for(const f of fairies)hole(f.x,f.y,16,nk*.8);
   for(const w of wisps)hole(w.x,w.y,10,nk*.6);
   if(merrick&&merrick.alpha>0){const tp=tipOf(merrick);hole(tp[0],tp[1],18,nk*.8);}
-  hole(238,150,56,nk*.55);
+  hole(240,158,62,nk*.55);
   lctx.globalAlpha=1;lctx.globalCompositeOperation='source-over';
   ctx.save();ctx.globalCompositeOperation='multiply';ctx.imageSmoothingEnabled=true;ctx.drawImage(lcv,0,0,W*R,H*R);ctx.restore();
 }
@@ -755,15 +734,15 @@ function drawSprite(sheetKey,row,col,x,y,o){
 }
 function shadow(x,y,w,a){
   ctx.fillStyle='rgba(30,50,20,'+(a||.22)+')';
-  ctx.beginPath();ctx.ellipse(x*R,(y-.5)*R,w*R,w*.4*R,0,0,6.283);ctx.fill();
+  ctx.beginPath();ctx.ellipse((x+w*.16)*R,(y-.3)*R,w*R,w*.4*R,0,0,6.283);ctx.fill();
 }
 const ROW={down:0,up:1,side:2};
 function drawItem(v,x,y){
   const k=v.item;const it=ITEMS[k];if(!it)return;
   let ix,iy;
-  if(v.dir==='side'){ix=x+(v.flip?5:-5);iy=y-11;}
-  else if(v.dir==='up'){ix=x+7;iy=y-11;}else{ix=x+7.5;iy=y-10;}
-  const s=R*1.2,px=Math.round(ix*R),py=Math.round(iy*R);
+  if(v.dir==='side'){ix=x+(v.flip?5:-5)*CS;iy=y-11*CS;}
+  else if(v.dir==='up'){ix=x+7*CS;iy=y-11*CS;}else{ix=x+7.5*CS;iy=y-10*CS;}
+  const s=R*1.2*(v.small?1:Math.max(.85,CS)),px=Math.round(ix*R),py=Math.round(iy*R);
   if(k==='bucket'){
     ctx.fillStyle=it[0];ctx.fillRect(px-1.8*s,py,3.6*s,2.8*s);ctx.fillStyle=it[1];ctx.fillRect(px-1.4*s,py,2.8*s,1*s);
     ctx.fillStyle='#4a3420';ctx.fillRect(px-2.1*s,py-1.2*s,.7*s,1.4*s);ctx.fillRect(px+1.4*s,py-1.2*s,.7*s,1.4*s);
@@ -887,10 +866,13 @@ function drawParticles(dt,pass){ // pass 0 = ordinary, 1 = additive
     ctx.globalAlpha=1;
   }
 }
+let dbgMask=null;
 function drawDebug(){
   ctx.save();ctx.lineWidth=1;
-  ctx.strokeStyle='rgba(255,0,0,.8)';ctx.fillStyle='rgba(255,0,0,.12)';
-  for(const o of OBST){ctx.beginPath();if(o.r){ctx.rect(o.r[0]*R,o.r[1]*R,(o.r[2]-o.r[0])*R,(o.r[3]-o.r[1])*R);}else{ctx.ellipse(o.e[0]*R,o.e[1]*R,o.e[2]*R,o.e[3]*R,0,0,6.283);}ctx.fill();ctx.stroke();}
+  if(MAPS){if(!dbgMask){dbgMask=mk(MAPS.w,MAPS.h);const x=dbgMask.getContext('2d'),im=x.createImageData(MAPS.w,MAPS.h);
+    for(let i=0;i<MAPS.w*MAPS.h;i++){const wk=MAPS.d[i*4],wt=MAPS.d[i*4+1];if(wt>127){im.data[i*4+2]=255;im.data[i*4+3]=90;}else if(wk<128){im.data[i*4]=255;im.data[i*4+3]=90;}}
+    x.putImageData(im,0,0);}
+    ctx.imageSmoothingEnabled=false;ctx.drawImage(dbgMask,0,0,W*R,H*R);}
   ctx.strokeStyle='rgba(0,80,255,.9)';
   for(const [a,b] of EDGES){ctx.beginPath();ctx.moveTo(N[a][0]*R,N[a][1]*R);ctx.lineTo(N[b][0]*R,N[b][1]*R);ctx.stroke();}
   ctx.fillStyle='#fff';for(const k in N){ctx.fillRect(N[k][0]*R-2,N[k][1]*R-2,4,4);}
@@ -910,7 +892,7 @@ function drawAir(t){
     const px=Math.round(f.x*R),py=Math.round((f.y+5+Math.sin(t*3+f.ph)*.8)*R);
     ctx.drawImage(fs.c,col*fs.cw,f.row*fs.ch,fs.cw,fs.ch,px-(fs.cw>>1),py-fs.ay,fs.cw,fs.ch);ctx.globalAlpha=1;}}
 }
-// screen-space overlays: sky chip, speech bubbles, floating text
+// screen-space overlays: speech bubbles, floating text
 function toScreen(wx,wy){const k=view.z*R0/R;return [Math.round(W*R0/2-view.cx*R*k)+wx*R*k,Math.round(H*R0/2-view.cy*R*k)+wy*R*k];}
 function bubbleBox(text,sx,sy,fs,max){
   ctx.font='600 '+fs+'px system-ui,sans-serif';
@@ -936,21 +918,6 @@ function drawScreen(dt){
     ctx.beginPath();ctx.moveTo(tx-fs*.4,bx.by+bx.bh);ctx.lineTo(sx,bx.by+bx.bh+fs*.7);ctx.lineTo(tx+fs*.4,bx.by+bx.bh);ctx.closePath();ctx.fill();ctx.stroke();
     ctx.fillStyle='rgba(255,252,238,1)';ctx.fillRect(tx-fs*.38,bx.by+bx.bh-1.5*bpc,fs*.76,3*bpc);
     ctx.fillStyle='#3a2a52';ctx.textBaseline='top';bx.lines.forEach((l,j)=>ctx.fillText(l,bx.bx+bx.pad,bx.by+bx.pad*.7+j*bx.lh));ctx.textBaseline='alphabetic';ctx.globalAlpha=1;}
-  drawSkyChip(bpc);
-}
-function drawSkyChip(bpc){
-  const w=74*bpc,h=32*bpc,x=8*bpc,y=8*bpc,h24=hourNow;
-  ctx.save();rrect(x,y,w,h,7*bpc);ctx.clip();
-  const g=ctx.createLinearGradient(0,y,0,y+h),day=1-nightK;
-  const top=[lerp(18,92,day)|0,lerp(24,170,day)|0,lerp(60,236,day)|0],bot=[lerp(40,170,day)|0,lerp(36,214,day)|0,lerp(90,255,day)|0];
-  g.addColorStop(0,'rgb('+top+')');g.addColorStop(1,'rgb('+bot+')');ctx.fillStyle=g;ctx.fillRect(x,y,w,h);
-  if(nightK>.1){ctx.fillStyle='#fff';for(let i=0;i<9;i++){const sx=x+((i*37+11)%70)*bpc,sy=y+((i*53+7)%22)*bpc;ctx.globalAlpha=nightK*(.4+.6*Math.abs(Math.sin(tAcc*1.7+i*2.1)));ctx.fillRect(sx,sy,Math.max(1,1.4*bpc),Math.max(1,1.4*bpc));}ctx.globalAlpha=1;}
-  const isDay=h24>=6&&h24<18;const u=isDay?(h24-6)/12:(((h24-18+24)%24)/12);
-  const cx=x+(8+58*u)*bpc,cy=y+(26-Math.sin(Math.PI*u)*19)*bpc,r=5.2*bpc;
-  if(isDay){const gl=ctx.createRadialGradient(cx,cy,0,cx,cy,r*2.6);gl.addColorStop(0,'rgba(255,240,170,.9)');gl.addColorStop(1,'rgba(255,240,170,0)');ctx.fillStyle=gl;ctx.fillRect(cx-r*3,cy-r*3,r*6,r*6);ctx.fillStyle='#ffd94a';ctx.beginPath();ctx.arc(cx,cy,r,0,6.283);ctx.fill();}
-  else{ctx.fillStyle='#f3f0d8';ctx.beginPath();ctx.arc(cx,cy,r,0,6.283);ctx.fill();ctx.fillStyle='rgb('+top+')';ctx.beginPath();ctx.arc(cx+r*.55,cy-r*.25,r*.9,0,6.283);ctx.fill();}
-  ctx.restore();
-  ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=bpc;rrect(x,y,w,h,7*bpc);ctx.stroke();
 }
 
 // ---------- main loop ----------
@@ -983,8 +950,8 @@ function frame(ts){
     if(nightK>.02)for(const f of fairies)updateFairy(f,dt);
     for(const w of wisps)updateWisp(w,dt);
     for(const l of lanterns){l.x=l.ax+Math.cos(tAcc*l.sp+l.ph)*l.ar;l.y=l.ay+Math.sin(tAcc*l.sp*1.4+l.ph)*l.ar*.6+Math.sin(tAcc*1.3+l.ph)*.8;}
-    if(rnd()<dt*.9){const o=pick([item('crystals'),item('flowers'),item('mushrooms')]); // gentle idle sparkle
-      spark(o.x+rr(3,17),o.y+rr(2,16),pick(MAGIC),{vx:rr(-2,2),vy:rr(-8,-3),ay:-1,life:rr(.8,1.4),s:.9});}
+    if(rnd()<dt*.9){const o=pick(GARDENS); // gentle idle sparkle over the flower beds
+      spark(o[0]+rr(-10,10),o[1]+rr(-8,4),pick(MAGIC),{vx:rr(-2,2),vy:rr(-8,-3),ay:-1,life:rr(.8,1.4),s:.9});}
   }
   // base transform: world cache px -> canvas px (zoom/pan)
   ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#4a8f3b';ctx.fillRect(0,0,cv.width,cv.height);
@@ -993,13 +960,13 @@ function frame(ts){
   ctx.imageSmoothingEnabled=Math.abs(k-1)>.001;
   ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
   ctx.drawImage(groundR,0,0);
+  drawPortalFx();
   for(const c of chars)c.sy=c.y;
   const cs=chars.slice().sort((a,b)=>a.sy-b.sy);
   let ci=0;
   for(const p of propsR){
     while(ci<cs.length&&cs[ci].sy<p.sy){drawChar(cs[ci],tAcc);ci++;}
     ctx.drawImage(p.c,p.x,p.y);
-    if(p.fx==='portal')drawPortalFx();
   }
   while(ci<cs.length){drawChar(cs[ci],tAcc);ci++;}
   drawParticles(dt,0);
@@ -1034,9 +1001,9 @@ function charAt(wx,wy){
   return best;
 }
 function propAt(wx,wy){ // interactive scenery
-  const w=item('well');if(wx>w.x+4&&wx<w.x+58*w.s&&wy>w.y+30&&wy<w.y+88*w.s)return 'well';
-  if(Math.hypot((wx-238)/54,(wy-176)/42)<1)return 'fountain';
-  const p=item('portal');if(wx>p.x&&wx<p.x+36&&wy>p.y&&wy<p.y+40)return 'portal';
+  if(wx>46&&wx<96&&wy>112&&wy<178)return 'well';
+  if(Math.hypot((wx-FOUNTAIN.x)/42,(wy-(FOUNTAIN.y-6))/42)<1)return 'fountain';
+  if(wx>384&&wx<448&&wy>218&&wy<310)return 'portal';
   return null;
 }
 function showTipFor(e,c){
@@ -1068,7 +1035,7 @@ function onTap(e){
   if(c){showTipFor(e,c);clearTimeout(showTipFor.t);showTipFor.t=setTimeout(()=>tip.style.display='none',2600);react(c);return;}
   const p=propAt(wx,wy);
   if(p==='well'){wellWish();return;}
-  if(p==='fountain'){const F=item('fountain');burst(F.x+63,F.y+16,30,{v0:12,v1:48,up:26,ay:30,gl:1});floatText('Splash!',F.x+63,F.y+2,'#cfeeff');return;}
+  if(p==='fountain'){burst(FOUNTAIN.spout[0],FOUNTAIN.spout[1]+4,30,{v0:12,v1:48,up:26,ay:30,gl:1});floatText('Splash!',FOUNTAIN.spout[0],FOUNTAIN.spout[1]-8,'#cfeeff');return;}
   if(p==='portal'){portal.want=false;portal.state='opening';portal.t=0;portal.hold=7;return;}
   if(!wasZoomed)zoomAt(wx,wy,MAXZ); // tap empty ground: zoom in around that point
 }
@@ -1123,20 +1090,22 @@ function updatePanel(){
 // ---------- start ----------
 async function start(){
   const names=[...PROPS,...Object.keys(CHARS).map(k=>k+'_sheet')];
+  const [bgI,occI]=await Promise.all([loadImg('assets/village_bg.webp'),loadImg('assets/village_occ.webp'),loadMaps()]);
+  assets.bg=bgI;assets.occ=occI;
   const imgs=await Promise.all(names.map(n=>loadImg('assets/'+n+'.png')));
   names.forEach((n,i)=>{assets[n.replace('_sheet','')]=imgs[i];});
   merrick=mkVillager('merrick','Merrick the Grey','wizard',17,'TD',{h:34,stride:4.4,sw:8.4,w:{cast:5,tower:3,portal:2,plaza:2,stroll:3,house:1,well:1,stall:1}});
-  rosie=mkVillager('rosie','Rosie','potion brewer',23,'E',{h:28,stride:4,w:{house:3,stall:3,well:1,plaza:2,stroll:2,brew:3}});
-  theo=mkVillager('theo','Theo','mushroom grower',21,'W',{h:30,stride:4.2,w:{house:2,stall:2,well:3,plaza:2,stroll:3,tend:4}});
-  mabel=mkVillager('mabel','Mabel','hedge witch',12,'S',{h:28,stride:3.4,w:{house:3,stall:2,well:1,plaza:3,stroll:1,fly:2.5}});
-  finn=mkVillager('finn','Finn','apprentice mage',31,'SE',{h:24,stride:3.2,sw:6.4,w:{house:1,stall:1,well:2,plaza:2,stroll:4,practice:4}});
+  rosie=mkVillager('rosie','Rosie','potion brewer',23,'E1',{h:28,stride:4,w:{house:3,stall:3,well:1,plaza:2,stroll:2,brew:3}});
+  theo=mkVillager('theo','Theo','moonflower grower',21,'W1',{h:30,stride:4.2,w:{house:2,stall:2,well:3,plaza:2,stroll:3,tend:4}});
+  mabel=mkVillager('mabel','Mabel','hedge witch',12,'RS',{h:28,stride:3.4,w:{house:3,stall:2,well:1,plaza:3,stroll:1,fly:2.5}});
+  finn=mkVillager('finn','Finn','apprentice mage',31,'RSE',{h:24,stride:3.2,sw:6.4,w:{house:1,stall:1,well:2,plaza:2,stroll:4,practice:4}});
   juniper=mkVillager('juniper','Juniper','magic-item seller',21,'JB',{h:28,stride:4,w:{}});
   juniper.state='post';juniper.breakT=rr(50,90);juniper.serving=null;juniper.act='minding the magic shop';
-  cat=mkAnimal('cat',292,258);dog=mkAnimal('dog',298,212);dragon=mkAnimal('dragon',300,170);
+  cat=mkAnimal('cat',222,343);dog=mkAnimal('dog',306,172);dragon=mkAnimal('dragon',318,170);
   cat.timer=rr(1,3);dog.timer=rr(.5,2);dragon.timer=rr(.5,2);
-  mkDuck(0,238,278,'duck');mkDuck(1,262,284,'duck2');mkDuck(2,254,274,'duck3');
+  mkDuck(0,0,'duck');mkDuck(1,0,'duck2');mkDuck(2,1,'duck3');
   frog=mkFrog();
-  mkSweeper(252,146,288,148,7);mkSweeper(204,243,232,243,6);
+  mkSweeper(226,113,260,115,7);mkSweeper(170,342,222,336,6);
   for(let i=0;i<3;i++)fairies.push(mkFairy(i));
   for(let i=0;i<16;i++)wisps.push(mkWisp());
   for(const a of LANTERN_ANCHORS)lanterns.push(mkLantern(a));
@@ -1156,7 +1125,7 @@ function trigger(what){ // test hooks: FV.trigger('portal'|'wish'|'flame'|'misfi
   else if(what==='talk')frogTalk(frog);
 }
 window.addEventListener('resize',()=>{fit();});
-window.FV={N,EDGES,OBST,SLOTS,villagers,chars,validateGraph,blocked,segClear,get R(){return R;},get R0(){return R0;},queue:()=>queue,view,items,LIGHTS,trigger,portal,particles,
+window.FV={N,EDGES,SLOTS,MAPS:()=>MAPS,inWater,ducks,villagers,chars,validateGraph,blocked,segClear,get R(){return R;},get R0(){return R0;},queue:()=>queue,view,items,LIGHTS,trigger,portal,particles,
   setHour(h){hourNow=h;},get nightK(){return nightK;},zoomAt,zoomOut,fairies,wisps,lanterns,sweepers,get frog(){return frog;},get dragon(){return dragon;},get merrick(){return merrick;},get cat(){return cat;},get dog(){return dog;}};
 fit();
 start();

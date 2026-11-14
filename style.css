@@ -11,7 +11,7 @@ canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#5fae4a}
 @media (max-width:800px),(max-height:500px){
   #wrap{flex-direction:column;height:auto;min-height:100%}
   #panel{width:100%;height:auto;border-left:0;border-top:1px solid #333}
-  #stage{flex:none;height:min(60vh,calc(66.67vw + 16px))}
+  #stage{flex:none;height:min(60vh,calc(75vw + 16px))}
 }
 #tip{position:absolute;display:none;pointer-events:none;background:rgba(20,18,12,.88);color:#fff6dc;border:1px solid #8a6b3a;border-radius:6px;padding:4px 8px;font-size:12px;white-space:nowrap;z-index:5}
 #roster{list-style:none;margin:12px 0 0;padding:0;font-size:.8rem;line-height:1.35}
