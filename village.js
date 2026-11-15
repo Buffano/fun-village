@@ -109,7 +109,7 @@ const CHARS={ // sheet meta: cell w,h and feet anchor (sheet px), rows x cols; r
   dragon:{cw:72,ch:76,ay:72,rows:3,cols:4},frog:{cw:60,ch:76,ay:72,rows:3,cols:4},fairy:{cw:40,ch:52,ay:48,rows:3,cols:4},
   mabelfly:{cw:132,ch:136,ay:132,rows:1,cols:4},
   helm:{cw:80,ch:136,ay:132,rows:3,cols:6},linky:{cw:72,ch:112,ay:108,rows:3,cols:6},luthien:{cw:84,ch:124,ay:120,rows:3,cols:6},
-  elf:{cw:96,ch:152,ay:148,rows:3,cols:4},griffin:{cw:152,ch:180,ay:176,rows:3,cols:4},owl:{cw:52,ch:56,ay:52,rows:3,cols:4},hat:{cw:56,ch:68,ay:64,rows:3,cols:4},
+  elf:{cw:96,ch:152,ay:148,rows:3,cols:4},griffin:{cw:152,ch:180,ay:176,rows:5,cols:4},owl:{cw:52,ch:56,ay:52,rows:3,cols:4},hat:{cw:56,ch:68,ay:64,rows:3,cols:4},
   // seated poses: row 0 = front, row 1 = side (facing left)
   merricksit:{cw:84,ch:148,ay:144,rows:2,cols:4},rosiesit:{cw:56,ch:116,ay:112,rows:2,cols:4},theosit:{cw:68,ch:124,ay:120,rows:2,cols:4},
   mabelsit:{cw:68,ch:124,ay:120,rows:2,cols:4},finnsit:{cw:56,ch:100,ay:96,rows:2,cols:4},luthiensit:{cw:80,ch:120,ay:116,rows:2,cols:4},linkysit:{cw:72,ch:108,ay:104,rows:2,cols:4}
@@ -642,18 +642,33 @@ function updateGriffin(g,dt){
     if(g.timer<=0){if(nightK>.65){g.timer=8;}else griffinGo(g,rnd()<.62);}}
   else if(g.state==='fly'){
     if(stepLeg(g,dt)){
-      if(g.after==='perch'){g.state='perch';g.lift=0;g.x=g.perch.x;g.y=g.perch.y;g.timer=rr(14,24);g.act=g.perch.txt;g.flip=rnd()<.5;g.dir='side';burst(g.x,g.y-4,8,{c:'#ffe27a',v0:6,v1:18});}
+      if(g.after==='perch'){g.state='perch';g.lift=0;g.x=g.perch.x;g.y=g.perch.y;g.timer=rr(14,24);g.act=g.perch.txt;g.flip=rnd()<.5;g.dir='side';g.stT=0;g.stNext=rr(5,10);burst(g.x,g.y-4,8,{c:'#ffe27a',v0:6,v1:18});}
       else{g.state='away';g.alpha=0;g.x=-80;g.timer=rr(55,100);}}}
-  else if(g.state==='perch'){g.timer-=dt;if(g.timer<=0)griffinLeave(g);}
+  else if(g.state==='perch'){g.timer-=dt;
+    if(g.stT>0)g.stT-=dt;else{g.stNext=(g.stNext===undefined?rr(5,10):g.stNext)-dt;if(g.stNext<=0&&g.timer>5){g.stT=2.8;g.stNext=rr(10,20);}}
+    if(g.timer<=0){g.state='crouch';g.cT=.38;g.stT=0;g.act='getting ready to fly';}}
+  else if(g.state==='crouch'){g.cT-=dt;if(g.cT<=0)griffinLeave(g);} // round 8: a short crouch before lifting off
+}
+// round 8 griffin sheet: row 0 = flap F0-F3, row 3 = F4 / glide / takeoff crouch / landing flare, row 4 = perched wing stretch
+const GFLAP=[[0,0],[0,1],[0,2],[0,3],[3,0]];
+function griffinFrame(g){
+  const L=g.leg;if(!L)return [0,0];
+  const flap=(tt,fps)=>GFLAP[Math.floor(tt*fps)%5];
+  const cruise=tt=>{const c=tt%4.4;return c<1.25?flap(c,8):[3,1];}; // a two-beat burst of flaps, then glide
+  if(L.mode==='takeoff')return L.t<2?flap(L.t,10):cruise(L.t-2);
+  if(L.mode==='land'){const rem=L.dur-L.t;if(rem<.8)return [3,3];if(rem<2.4)return flap(L.t,10);return cruise(L.t);}
+  return cruise(L.t);
 }
 function drawGriffinAir(g,t){
-  const fl=g.fdir>0,rate=(g.after==='perch'&&g.leg&&g.leg.t>g.leg.dur-.9)?9:7;
-  drawSprite('griffin',0,Math.floor(t*rate)&3,g.x,g.y,{flip:fl,dy:-g.lift+Math.sin(t*5)*.5,alpha:g.alpha});
+  const fl=g.fdir>0,[row,col]=griffinFrame(g);
+  drawSprite('griffin',row,col,g.x,g.y,{flip:fl,dy:-g.lift+(row===3&&col===1?Math.sin(t*5)*.5:0),alpha:g.alpha});
 }
 function drawGriffin(g,t){
   if(g.alpha<=0)return;
   if(!(g.state==='perch'&&g.perch&&g.perch.roof))shadow(g.x,g.y,Math.max(3,11-g.lift*.1),.22*Math.max(.2,1-g.lift/70));
   if(g.state==='fly')return;
+  if(g.state==='crouch'){drawSprite('griffin',3,2,g.x,g.y,{flip:g.flip});return;}
+  if(g.state==='perch'&&g.stT>0){const u=1-g.stT/2.8,i=u<.2?0:u<.4?1:u<.7?2:u<.85?1:0;drawSprite('griffin',4,i,g.x,g.y,{flip:g.flip});return;}
   const m=(t*.55+g.x*.07)%9,col=m<4?0:m<5.2?1:m<6?2:m<7.4?0:3;
   drawSprite('griffin',1,col,g.x,g.y,{flip:g.flip});
 }
@@ -1535,16 +1550,17 @@ async function start(){
   const names=[...PROPS,...Object.keys(CHARS).map(k=>k+'_sheet')];
   const [bgI,occI]=await Promise.all([loadImg('assets/village_bg.webp'),loadImg('assets/village_occ.webp'),loadMaps()]);
   assets.bg=bgI;assets.occ=occI;
-  const imgs=await Promise.all(names.map(n=>loadImg('assets/'+n+'.png')));
+  const R8=new Set(['theo_sheet','finn_sheet','linky_sheet','griffin_sheet']);
+  const imgs=await Promise.all(names.map(n=>loadImg('assets/'+n+'.png'+(R8.has(n)?'?r8':''))));
   names.forEach((n,i)=>{assets[n.replace('_sheet','')]=imgs[i];});
   merrick=mkVillager('merrick','Merrick the Grey','wizard',17,'TD',{strideS:3.134,h:34,stride:4.4,sw:8.4,w:{cast:5,tower:3,portal:2,plaza:2,stroll:3,house:1,well:1,stall:1,bench:1,friend:1.5}});
   rosie=mkVillager('rosie','Rosie','potion brewer',23,'E1',{strideS:2.721,h:28,stride:4,w:{house:3,stall:3,well:1,plaza:2,stroll:2,brew:3,bench:1.2,friend:1.5}});
-  theo=mkVillager('theo','Theo','moonflower grower',21,'W1',{strideS:2.913,h:30,stride:4.2,w:{house:2,stall:2,well:3,plaza:2,stroll:3,tend:4,bench:1.2,friend:1.5}});
+  theo=mkVillager('theo','Theo','moonflower grower',19.5,'W1',{strideS:2.667,h:30,stride:4,w:{house:2,stall:2,well:3,plaza:2,stroll:3,tend:4,bench:1.2,friend:1.5}});
   mabel=mkVillager('mabel','Mabel','hedge witch',12,'RS',{strideS:2.252,h:28,stride:3.4,w:{house:3,stall:2,well:1,plaza:3,stroll:1,fly:2.5,bench:1.5,friend:1.5}});
-  finn=mkVillager('finn','Finn','apprentice mage',31,'RSE',{strideS:2.364,h:24,stride:3.2,sw:6.4,w:{house:1,stall:1,well:2,plaza:2,stroll:4,practice:4,bench:1,friend:1.5}});
+  finn=mkVillager('finn','Finn','apprentice mage',11,'RSE',{strideS:1.667,h:24,stride:2.5,sw:6.4,w:{house:1,stall:1,well:2,plaza:2,stroll:4,practice:4,bench:1,friend:1.5}});
   juniper=mkVillager('juniper','Juniper','magic-item seller',21,'JB',{h:28,stride:4,w:{}});
   helm=mkVillager('helm','Sir Helm','knight',17,'GS',{strideS:3.107,h:32,stride:4.2,sw:8.4,w:{patrol:6,plaza:1,stroll:1,bench:1.2,friend:1.2}});
-  linky=mkVillager('linky','Linky','hero of the wild',28,'SE1',{strideS:2.648,h:26,stride:3.6,sw:7,w:{poke:5,stroll:3,plaza:1,house:1,stall:1,well:1,bench:1.2,friend:1.5}});
+  linky=mkVillager('linky','Linky','hero of the wild',17,'SE1',{strideS:2.333,h:26,stride:3.5,sw:7,w:{poke:5,stroll:3,plaza:1,house:1,stall:1,well:1,bench:1.2,friend:1.5}});
   luthien=mkVillager('luthien','Lady Luthien','lady in waiting',15,'RNW',{strideS:1.842,h:30,stride:3.9,sw:8.6,bob:.45,w:{stroll:4,plaza:3,bench:2.5,house:1,stall:1,friend:3}});
   elf=mkElf();griffin=mkGriffin();owl=mkOwl();hatObj=mkHat();
   juniper.state='post';juniper.breakT=rr(50,90);juniper.serving=null;juniper.act='minding the magic shop';
