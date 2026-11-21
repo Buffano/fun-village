@@ -114,6 +114,18 @@ const CHARS={ // sheet meta: cell w,h and feet anchor (sheet px), rows x cols; r
   merricksit:{cw:84,ch:148,ay:144,rows:2,cols:4},rosiesit:{cw:56,ch:116,ay:112,rows:2,cols:4},theosit:{cw:68,ch:124,ay:120,rows:2,cols:4},
   mabelsit:{cw:68,ch:124,ay:120,rows:2,cols:4},finnsit:{cw:56,ch:100,ay:96,rows:2,cols:4},luthiensit:{cw:80,ch:120,ay:116,rows:2,cols:4},linkysit:{cw:72,ch:108,ay:104,rows:2,cols:4}
 };
+// round 9: standing + idle-life sheets (3 rows x 8 cols: stand, blink, half-blink, breathe, glance/turn L, glance/turn R, weight shift L, R),
+// activity sheets (one row per activity; the last row is the side-view chat gesture), Linky's 120-wide action sheet and two props
+const STANDK=['rosie','theo','mabel','finn','merrick','helm','linky','luthien','juniper','elf'];
+for(const k of STANDK){const m=CHARS[k];CHARS[k+'stand']={cw:m.cw,ch:m.ch,ay:m.ay,rows:3,cols:8};}
+const ACTS={rosie:{stir:[0,4],chat:[1,2]},theo:{tend:[0,3],chat:[1,2]},merrick:{raiseF:[0,3],raiseS:[1,3],chat:[2,2]},
+  finn:{castF:[0,3],castS:[1,3],chat:[2,2]},mabel:{sweep:[0,4],chat:[1,2]},juniper:{serve:[0,2],wave:[1,2],chat:[2,2]}};
+for(const k in ACTS){const m=CHARS[k],a=Object.values(ACTS[k]);CHARS[k+'act']={cw:m.cw,ch:m.ch,ay:m.ay,rows:a.length,cols:Math.max(...a.map(q=>q[1]))};}
+for(const k of ['helm','luthien']){const m=CHARS[k];CHARS[k+'chat']={cw:m.cw,ch:m.ch,ay:m.ay,rows:1,cols:2};}
+CHARS.linkychat={cw:120,ch:112,ay:108,rows:1,cols:2}; // Linky's action cells are 24 sheet px wider on each side (same centre and feet) so the sword fits
+CHARS.linkyact={cw:120,ch:112,ay:108,rows:5,cols:7};  // rows: grass cut, sword combo, pot lift/throw, gem overhead (front), ocarina (front)
+CHARS.cauldron={cw:40,ch:32,ay:31,rows:1,cols:3};     // Rosie's little cauldron, 3 bubble frames
+CHARS.pot={cw:32,ch:32,ay:29,rows:1,cols:6};          // clay pot: whole, cracked, 4 shatter frames
 const SITS={merrick:{f:1,s:1},rosie:{f:0,s:1},theo:{f:1,s:0},mabel:{f:1,s:1},finn:{f:1,s:1},luthien:{f:1,s:1},linky:{f:1,s:1}}; // which seated views exist
 // the four plaza benches: seat = feet spot when seated, node = approach node, dir/flip = which way the sitter faces
 // round 7: each bench has a stand-point (sp) in front of the seat, the seat's centre line (seat = hip spot on the plank, or the top edge of the backrest for the
@@ -279,6 +291,7 @@ function chooseActivity(v){
     if(k==='stall')return juniper&&juniper.state==='post'&&queue.length<3&&!v.item;
     if(k==='well')return !wellBusy;
     if(k==='bench')return !!pickBench(v);
+    if(k==='pot')return POTS.some(p=>p.state==='ready'&&!p.claim);
     if(k==='friend')return villagers.some(o=>o!==v&&o!==juniper&&o.alpha===1&&(o.state==='walk'||o.state==='idle'));
     return true;};
   const cand=keys.filter(ok);let r=rnd()*cand.reduce((s,k)=>s+w[k],0);
@@ -309,6 +322,10 @@ function chooseActivity(v){
     v.phase='toFriend';v.act='going to find '+o.name;goTo(v,nearestNode(o.x,o.y));}
   else if(act==='patrol'){const t=pick(rnd()<.65?['B1','B2','B3','GS']:['RN','RE','RW','RS','EG','WG']);
     v.phase='patrol';v.act=['B1','B2','B3','GS'].includes(t)?'patrolling the bridge':'patrolling the courtyard';v.patrolN=t;goTo(v,t);}
+  else if(act==='sweep'){const t=pick(SWEEP_NODES.filter(k=>k!==v.node));v.phase='toSweep';v.act='heading out to sweep';goTo(v,t);}
+  else if(act==='drill'){v.dir='side';v.flip=rnd()<.5;const q=[{n:'combo'},{rest:rr(.7,1.1)},{n:'combo'}];if(rnd()<.5)q.push({rest:rr(.7,1.1)},{n:'combo'});linkyQueue(v,q,'practising his sword moves');}
+  else if(act==='ocarina'){const n=freeRing(v);v.ringNode=n;v.phase='toOcarina';v.act='looking for a quiet spot';goTo(v,n);}
+  else if(act==='pot'){const P=pick(POTS.filter(p=>p.state==='ready'&&!p.claim));P.claim=v;v.pot=P;v.phase='toPot';v.act='eyeing a clay pot';goTo(v,P.node,[P.sp]);}
   else if(act==='poke'){const t=pick(POKE_NODES.filter(k=>k!==v.node));v.phase='toPoke';v.act='looking for something to poke';goTo(v,t);}
   else{ // stroll: two random nodes
     v.phase='stroll';v.act='out for a stroll';v.strollN=pick(STROLL_NODES.filter(k=>k!==v.node));goTo(v,v.strollN);
@@ -328,7 +345,7 @@ function arrive(v){ // end of a route
   else if(ph==='toQueue'){v.state='queue';faceCounter(v);v.timer=0;}
   else if(ph==='toWell'){v.state='pump';v.timer=rr(4,6);v.dir='up';v.flip=false;v.node='WELL';v.act='drawing water at the well';v.pumpT=0;v.splashT=0;}
   else if(ph==='toPlaza'){v.state='idle';v.timer=rr(5,11);v.dir='down';v.node=v.destNode;v.act='enjoying the glowing fountain';v.lookT=rr(1.5,3.5);}
-  else if(ph==='toBrew'){v.node=v.destNode;v.state='brew';v.timer=rr(5,7);v.dir='down';v.act='brewing a bubbly potion';v.bT=0;}
+  else if(ph==='toBrew'){v.node=v.destNode;startBrew(v,rr(5,7));}
   else if(ph==='toMush'){v.node=v.destNode;v.state='tend';v.timer=rr(6,10);v.dir='side';v.flip=v.destNode==='MB';v.act='tending the glowing flower beds';v.tT=0;}
   else if(ph==='toPortal'){v.node='PT';v.state='inspect';v.timer=rr(7,10);v.dir='up';v.flip=false;v.act='studying the portal stone';v.iT=0;portal.want=true;}
   else if(ph==='stroll'){v.node=v.destNode;if(rnd()<.4){v.strollN=pick(STROLL_NODES.filter(k=>k!==v.node));goTo(v,v.strollN);}else{v.state='idle';v.timer=rr(1.5,4);v.dir='down';}}
@@ -336,10 +353,17 @@ function arrive(v){ // end of a route
   else if(ph==='leaveBench'){v.state='idle';v.timer=rr(1,2.5);v.dir='down';v.act='out and about';}
   else if(ph==='toFriend'){v.node=v.destNode;v.state='idle';v.timer=rr(3,6);v.dir='down';v.act='looking for a chat';}
   else if(ph==='patrol'){v.node=v.destNode;v.state='idle';v.timer=rr(6,11);v.dir=rnd()<.5?'down':'side';v.flip=rnd()<.5;v.act=v.act.replace('patrolling','keeping watch over');}
-  else if(ph==='toPoke'){v.node=v.destNode;v.state='poke';v.timer=rr(4.5,6.5);v.dir='side';v.flip=rnd()<.5;v.pT=0;v.pN=0;v.found=false;v.willFind=rnd()<.4;v.cheering=false;v.act='poking around in the grass';}
+  else if(ph==='toPoke'){v.node=v.destNode;startPoke(v,rr(4.5,6.5),rnd()<.4);}
+  else if(ph==='toSweep'){v.node=v.destNode;v.state='sweep';v.timer=rr(6,9);v.dir='side';v.flip=rnd()<.5;v.sT=0;v.sF=-1;v.act='sweeping the path';}
+  else if(ph==='toOcarina'){v.node=v.destNode;v.dir='down';v.flip=false;linkyQueue(v,[{n:'oca',hold:rr(4,6.5)}],'playing a little tune');}
+  else if(ph==='toPot'){const P=v.pot;if(P&&P.state==='ready'){v.x=P.sp[0];v.y=P.sp[1];v.dir='side';v.flip=P.face>0;linkyQueue(v,[{n:'pot'}],'lifting a clay pot');}else{if(P)P.claim=null;v.pot=null;v.state='idle';v.timer=rr(.5,1.5);}}
+  else if(ph==='toGem'){const g=v.gemP;const i=g?particles.indexOf(g):-1;if(i>=0)particles.splice(i,1);v.gemP=null;v.dir='down';v.flip=false;v.gemC=g?g.gc:pick(GEMCOL);
+    floatText(pick(['A gem!','Shiny!','Ooh, sparkly!']),v.x,v.y-v.h-4,'#c8ffd8');linkyQueue(v,[{n:'gem'}],'holding up a shiny gem');}
   else {v.state='idle';v.timer=rr(1,3);v.dir='down';}
 }
 function tipOf(v){ // wand/staff tip in world coords
+  if((v===merrick&&v.state==='cast')||(v===finn&&v.state==='practice')){const P=poseOf(v,tAcc);
+    if(P){const q=TIPR[v.id][v.dir==='side'?1:0][P[2]],fl=(v.dir==='side'&&v.flip)?-1:1;return [v.x+q[0]*fl*CS,v.y+q[1]*CS];}}
   const T=TIPS[v.id];if(!T)return [v.x,v.y-v.h*.6];
   const t=T[v.dir]||T.down;const fl=(v.dir==='side'&&v.flip)?-1:1;
   return [v.x+t[0]*fl*CS,v.y+t[1]*CS];
@@ -355,7 +379,7 @@ function startFly(v){ // Mabel hops onto her broom and flies to a random spot on
 }
 function updateVillager(v,dt){
   v.speed=v.spd0;v.chatCd-=dt;v.turnT=Math.max(0,v.turnT-dt);v.kick=Math.max(0,v.kick-dt);
-  if(v.state!=='walk'){v.spf=0;v.hx=undefined;}
+  if(v.state!=='walk'){v.spf=0;v.hx=undefined;v.stall=0;}
   switch(v.state){
     case 'chat':updateChat(v,dt);break;
     case 'sit':v.timer-=dt;if(v.timer<=0)standUp(v);break;
@@ -373,15 +397,23 @@ function updateVillager(v,dt){
       v.x=lerp(F[0],b.sp[0],e);v.y=lerp(F[1],b.sp[1],e);
       if(q>=1){b.occ=null;v.bench=null;v.sortY=undefined;v.node=b.node;v.route=[N[b.node].slice()];v.state='walk';v.phase='leaveBench';v.spf=0;v.hx=undefined;}
       break;}
-    case 'poke':{
+    case 'poke':{ // round 9: pokes mixed with sword grass cuts; a find ends in the gem-overhead pose
       v.timer-=dt;v.pT+=dt;
-      if(!v.cheering){
-        if(v.pT>(v.pN+1)*1.05&&v.pN<5){v.pN++;v.kick=.3;const fl=v.dir==='side'?(v.flip?1:-1):0,sx=v.x+fl*10*CS*1.3,sy=v.y+1;
+      if(v.pT>(v.pN+1)*1.05&&v.pN<5&&v.cutT<0){v.pN++;
+        if(v.forceCut||rnd()<.55){v.cutT=0;v.cutFx=false;}
+        else{v.kick=.3;const fl=v.dir==='side'?(v.flip?1:-1):0,sx=v.x+fl*10*CS*1.3,sy=v.y+1;
           for(let i=0;i<7;i++)spark(sx+rr(-3,3),sy-rr(0,3),pick(['#7fcf5b','#a8e07a','#4a8f3b','#d8f0a0']),{vx:rr(-14,14),vy:rr(-26,-8),ay:50,life:rr(.4,.8)});
-          puff(sx,sy,'rgba(110,170,70,.6)',2);}
-        if(v.timer<=0){if(v.willFind&&!v.found){v.found=true;v.cheering=true;v.timer=1.3;gemFind(v);}
-          else{v.state='idle';v.timer=rr(1,2.5);v.dir='down';v.act='out and about';}}
-      }else if(v.timer<=0){v.cheering=false;v.state='idle';v.timer=rr(1,2.5);v.dir='down';v.act='out and about';}
+          puff(sx,sy,'rgba(110,170,70,.6)',2);}}
+      if(v.cutT>=0){v.cutT+=dt;v.cut=seqIdx(LDUR.grass,v.cutT);if(v.cut>=2&&!v.cutFx){v.cutFx=true;grassFx(v);}if(v.cutT>=SUM(LDUR.grass)){v.cutT=-1;v.cut=-1;}}
+      if(v.timer<=0&&v.cutT<0){v.forceCut=false;
+        if(v.willFind&&!v.found){v.found=true;gemFind(v);}
+        else{v.state='idle';v.timer=rr(1,2.5);v.dir='down';v.act='out and about';}}
+      break;}
+    case 'lact':updateLact(v,dt);break;
+    case 'sweep':{ // Mabel sweeps the path
+      v.timer-=dt;v.sT+=dt;const f=Math.floor(v.sT/.18)%4;
+      if(f!==v.sF){v.sF=f;if(f===2){const fl=v.flip?1:-1;puff(v.x+fl*5.5,v.y,'rgba(196,172,128,.55)',2);if(rnd()<.6)spark(v.x+fl*6,v.y-1,'#d8c49a',{vx:fl*rr(4,10),vy:rr(-8,-3),ay:20,life:rr(.4,.7)});}}
+      if(v.timer<=0){v.state='idle';v.timer=rr(.8,2);v.dir='down';v.act='admiring a tidy path';}
       break;}
     case 'idle':
       v.timer-=dt;v.lookT-=dt;
@@ -412,7 +444,7 @@ function updateVillager(v,dt){
     case 'buy':
       v.timer-=dt;v.dir='up';v.flip=false;
       if(v.timer<=0){
-        v.item=pick(['potion','potionB','potionG','crystal','scroll']);v.itemT=rr(20,32);juniper.serving=null;
+        v.item=pick(['potion','potionB','potionG','crystal','scroll']);v.itemT=rr(20,32);juniper.serving=null;juniper.waveT=1.3;
         dropFromQueue(v);v.state='idle';v.timer=.4;v.dir='down';v.node='E2';v.act='heading off with a treasure';
         for(let i=0;i<5;i++)spark(SLOTS[0][0]+rr(-3,3),SLOTS[0][1]-12*CS,pick(['#ffe27a','#fff6c8']),{vx:rr(-8,8),vy:rr(-28,-14),ay:50,life:.7});
       }
@@ -444,8 +476,9 @@ function updateVillager(v,dt){
       break;}
     case 'brew':{ // Rosie: bubbling potion
       v.timer-=dt;v.bT+=dt;
-      if(rnd()<dt*9){const col=pick(['#ff8fd6','#8fe0ff','#9dffb0','#d4a8ff']);spark(v.x+rr(-6,6),v.y-rr(8,14),col,{vx:rr(-3,3),vy:rr(-14,-7),ay:-2,life:rr(.9,1.5),s:1.4,gl:1});}
-      if(v.timer<=0){v.item=pick(['potion','potionB','potionG']);v.itemT=rr(15,26);burst(v.x,v.y-14,12,{c:pick(MAGIC),gl:1,v0:6,v1:22});v.state='idle';v.timer=rr(.8,2);v.dir='down';v.act='proudly holding a fresh potion';}
+      const cp=cauldronAt(v);
+      if(v.bT>.3&&rnd()<dt*9){const col=pick(['#ff8fd6','#8fe0ff','#9dffb0','#d4a8ff']);spark(cp[0]+rr(-2.5,2.5),cp[1]-5.5-rr(0,2),col,{vx:rr(-3,3),vy:rr(-14,-7),ay:-2,life:rr(.9,1.5),s:1.4,gl:1});}
+      if(v.timer<=0){v.item=pick(['potion','potionB','potionG']);v.itemT=rr(15,26);burst(cp[0],cp[1]-6,12,{c:pick(MAGIC),gl:1,v0:6,v1:22});puff(cp[0],cp[1]-2,'rgba(220,210,240,.7)',6);v.state='idle';v.timer=rr(.8,2);v.dir='down';v.act='proudly holding a fresh potion';}
       break;}
     case 'tend':{ // Theo: glowing mushrooms
       v.timer-=dt;v.tT+=dt;
@@ -473,7 +506,7 @@ function updateVillager(v,dt){
 // ---- round 7: keep-right lanes, look-ahead yielding, soft obstacles (all moves are checked against the walk mask) ----
 const AV={R:9,LOOK:18,LANE:3.4};
 const AVSKIP=new Set(['enter','inside','exit','gone','arrive','vanish','fly']);
-const AV_EXEMPT=new Set(['toBench','leaveBench']);
+const AV_EXEMPT=new Set(['toBench','leaveBench','toPot','toGem']);
 let ELFREF=null;
 function avOthers(v){const a=[];for(const o of villagers)if(o!==v&&o.alpha>.6&&!AVSKIP.has(o.state)&&!(o===juniper&&o.state==='post'))a.push(o);
   if(ELFREF&&ELFREF!==v&&ELFREF.alpha>.6&&!AVSKIP.has(ELFREF.state))a.push(ELFREF);return a;}
@@ -537,6 +570,7 @@ function stepWalk(v,dt){ // eased start/stop, smoothed heading, keep-right lane 
   else{if(ax>ay*1.6){v.dir='side';v.flip=ux>0;}else v.dir=uy>0?'down':'up';}
   if(v.dir!==od||(v.dir==='side'&&v.flip!==of))v.turnT=.16;
   v.animT+=st*sf/((v.dir==='side'&&v.strideS)?v.strideS:v.stride);
+  v.stall=(st*sf<dt*1.2)?(v.stall||0)+dt:0;
   return false;
 }
 // settle in a free spot: used when someone stops right on top of somebody who is standing still
@@ -606,12 +640,185 @@ const POKE_NODES=['MA','MB','WP','W2','SE2','SW1','E2','WG2','SE1'];
 const GEMCOL=[['#55e07a','#1c7a3a'],['#5ab8ff','#1c4a9a'],['#ff6a6a','#8a1c2a'],['#c58cff','#5a2a9a']];
 function gemFind(v){
   const g=pick(GEMCOL);
+  if(v===linky){v.gemC=g;v.dir='down';v.flip=false;for(let i=0;i<8;i++)spark(v.x+rr(-6,6),v.y-4,pick(['#ffffff',g[0],'#fff6c8']),{vx:rr(-14,14),vy:rr(-28,-10),ay:40,life:rr(.5,1),gl:1});
+    floatText(pick(['Shiny!','A gem!','Ooh, sparkly!']),v.x,v.y-v.h-4,'#c8ffd8');linkyQueue(v,[{n:'gem'}],'holding up a shiny gem');return;}
   particles.push({k:'item',item:'gem',gc:g,x:v.x+(v.dir==='side'?(v.flip?8:-8):0),y:v.y-6,vx:0,vy:-46,ay:120,life:2.6,max:2.6,land:v.y+2,add:false,keep:true});
   for(let i=0;i<8;i++)spark(v.x+rr(-6,6),v.y-4,pick(['#ffffff',g[0],'#fff6c8']),{vx:rr(-14,14),vy:rr(-28,-10),ay:40,life:rr(.5,1),gl:1});
   floatText(pick(['Shiny!','A gem!','Ooh, sparkly!']),v.x,v.y-v.h-4,'#c8ffd8');
   v.cheerT=1.1;
 }
 function pokeSpot(v){const t=v.pokeAt||[v.x,v.y+4];return t;}
+
+// ---------- round 9: standing poses + idle life, activity poses, Linky's actions, clay pots ----------
+const SC=CS/K; // sheet px -> world px
+const SUM=a=>a.reduce((s,x)=>s+x,0);
+function seqIdx(durs,u){let i=0;for(;i<durs.length-1;i++){if(u<durs[i])break;u-=durs[i];}return i;}
+const LROW={grass:0,combo:1,pot:2,gem:3,oca:4};
+const LDUR={grass:[.12,.14,.07,.16,.14],combo:[.18,.14,.08,.14,.08,.16,.3],pot:[.25,.15,.4,.14,.08,.2],gem:[.2,1],oca:[.2,.5,.5]};
+const TIPR={ // staff / wand tip (world px from the feet, facing left) for the 3 raise / cast frames: [front, side]
+  merrick:[[[-8.5,-26],[-9.03,-27.66],[-9.81,-30.04]],[[-8.5,-25],[-9,-26.67],[-9.74,-29.07]]],
+  finn:[[[-6.05,-15.81],[-9.7,-14.58],[-8.29,-14.92]],[[-6.05,-15.81],[-9.7,-14.58],[-8.29,-14.92]]]};
+const POTHOLD={1:[-19,-48],2:[0,-93],3:[2,-90],4:[-27,-67]}; // held pot anchor per pot frame (sheet px from Linky's feet, facing left)
+const SWEEP_NODES=['SW2','W2','GN','RSW','RSE','WG2','SW1'];
+function standKey(c){return sheetsR[c.sheet+'stand']?c.sheet+'stand':c.sheet;}
+function handOff(v,dx,dy){return [v.x+dx*SC*(v.dir==='side'&&v.flip?-1:1),v.y+dy*SC];}
+function gemPos(v){const f=v.la?v.la.f:1;return [v.x+(f?-20:-22)*SC,v.y+(f?-107:-87)*SC];}
+function lifeCol(c,t){ // which standing-sheet column shows now: 0 stand, 1 blink, 2 half-blink, 3 breathe in, 4/5 glance or head turn, 6/7 weight shift
+  let L=c.life;
+  if(!L)L=c.life={ph:rnd()*3.2,bN:t+rr(.5,3),bA:-9,gN:t+rr(4,9),gU:-1,gc:4,wN:t+rr(8,16),wU:-1,wc:6};
+  if(t>L.wN&&t>L.gU){L.wU=t+rr(1.8,3.2);L.wc=rnd()<.5?6:7;L.wN=L.wU+rr(10,20);}
+  if(t>L.gN&&t>L.wU){L.gU=t+rr(.7,1.4);L.gc=rnd()<.5?4:5;L.gN=L.gU+rr(5,11);}
+  let base=0;
+  if(t<L.wU)base=L.wc;else if(t<L.gU)base=L.gc;else{const b=(t+L.ph)%3.2;if(b>1.5&&b<2.7)base=3;}
+  if(t>L.bN){if(base===0){L.bA=t;L.bN=t+rr(2,5);}else L.bN=t+.25;}
+  const e=t-L.bA;
+  if(e>=0&&e<.2&&base===0)return (e<.06||e>=.14)?2:1;
+  return base;
+}
+function poseOf(c,t){ // drawn activity pose -> [sheet,row,col] or null (then the standing sheet is used)
+  const id=c.id,st=c.state,sd=c.dir==='side';
+  if(c===linky){
+    if(st==='lact'&&c.la&&c.la.name)return ['linkyact',LROW[c.la.name],c.la.f];
+    if(st==='poke'&&c.cut>=0)return ['linkyact',0,c.cut];
+  }
+  if(st==='brew'&&id==='rosie'&&sd)return ['rosieact',0,Math.floor(c.bT/.16)%4];
+  if(st==='tend'&&id==='theo'&&sd){const u=c.tT,f=(u<.3||c.timer<.3)?0:1+(Math.floor((u-.3)/.35)&1);return ['theoact',0,f];}
+  if(st==='cast'&&id==='merrick'&&c.dir!=='up'){const u=c.castT,f=(u<.12||c.timer<.12)?0:(u<.3||c.timer<.32)?1:2;return ['merrickact',sd?1:0,f];}
+  if(st==='practice'&&id==='finn'&&c.dir!=='up'){let f=0;
+    if(c.mis)f=1;else if(c.pN>0){const u=c.pT-c.pN*1.05;f=u<.25?1:u<.45?2:0;}
+    if(c.timer<.35&&!c.misfire)f=1;
+    return ['finnact',sd?1:0,f];}
+  if(st==='sweep'&&id==='mabel'&&sd)return ['mabelact',0,Math.floor(c.sT/.18)%4];
+  if(c===juniper){if(c.waveT>0&&c.dir==='down')return ['juniperact',1,Math.floor(t/.22)&1];
+    if(c.serving&&sd){const b=c.serving,u=2.4-(b.timer||0);return ['juniperact',0,(b.state==='buy'&&u>.35&&b.timer>.25)?1:0];}}
+  if(st==='chat'&&sd&&bubbles.some(b=>b.o===c)){const k=ACTS[id]?id+'act':id+'chat';
+    if(sheetsR[k]){const row=ACTS[id]?ACTS[id].chat[0]:0,m=(t*1.6+c.uid*.7)%2.6;if(m<1.8)return [k,row,m<.9?0:1];}}
+  return null;
+}
+function r9free(v){ // test hooks: release whatever v was committed to
+  if(v.bench){v.bench.occ=null;v.bench=null;v.sortY=undefined;}
+  dropFromQueue(v);if(wellBusy===v)wellBusy=null;if(juniper&&juniper.serving===v)juniper.serving=null;
+  if(v.pot){if(v.pot.state==='held')respawnPot(v.pot);v.pot.claim=null;v.pot=null;}
+  v.ringNode=null;v.resume=null;v.laQ=[];v.la=null;v.cutT=-1;v.cut=-1;v.partner=null;v.route=[];v.alpha=1;v.lift=0;v.squash=1;v.mis=false;
+  if(v.state==='inside'||v.state==='enter'||v.state==='exit'){v.state='idle';v.timer=2;}
+}
+// ---- Rosie's cauldron ----
+function cauldronAt(v){return [v.x+(v.flip?1:-1)*26*SC,v.y];}
+function startBrew(v,t){
+  v.state='brew';v.timer=t;v.bT=0;v.dir='side';v.act='brewing a bubbly potion';
+  v.flip=FOUNTAIN.x>v.x;let cp=cauldronAt(v);if(blocked(cp[0],cp[1],1)){v.flip=!v.flip;cp=cauldronAt(v);}
+  puff(cp[0],cp[1]-2,'rgba(220,210,240,.7)',6);
+}
+// ---- Linky ----
+function startPoke(v,t,find){v.state='poke';v.timer=t;v.dir='side';v.flip=rnd()<.5;v.pT=0;v.pN=0;v.found=false;v.willFind=find;v.cutT=-1;v.cut=-1;v.forceCut=false;v.act='poking around in the grass';}
+function slashArc(v,cx,cy,r,a0,a1){const p=handOff(v,cx,cy),fl=v.dir==='side'&&v.flip;
+  particles.push({k:'slash',x:p[0],y:p[1],r:r*SC,a0:fl?180-a1:a0,a1:fl?180-a0:a1,vx:0,vy:0,ay:0,life:.13,max:.13});}
+function grassFx(v){
+  slashArc(v,-26,-26,24,95,200);
+  const p=handOff(v,-30,-6),fw=(v.flip?1:-1);
+  for(let i=0;i<10;i++)spark(p[0]+rr(-3,3),p[1]-rr(0,2),pick(['#7fcf5b','#a8e07a','#4a8f3b','#5fae48','#d8f0a0']),{vx:rr(-8,8)+fw*rr(2,8),vy:rr(-30,-12),ay:60,life:rr(.5,.9),s:1});
+  puff(p[0],p[1]+1,'rgba(110,170,70,.55)',2);
+}
+function slashFx(v,name,f){
+  if(name!=='combo')return;
+  if(f===2)slashArc(v,-30,-58,26,110,200);
+  else if(f===4)slashArc(v,-30,-60,24,160,250);
+  else if(f===5){const a=handOff(v,-66,-49),b=handOff(v,-40,-49);particles.push({k:'slash',line:true,x0:a[0],x1:b[0],y:a[1],x:a[0],vx:0,vy:0,ay:0,life:.16,max:.16});}
+}
+function noteFx(v){particles.push({k:'note',x:v.x+3.6+rr(-.5,.5),y:v.y-17.5,vx:rr(2,5),vy:rr(-7.5,-5),ay:0,life:1.9,max:1.9,ph:rnd()*6,c:pick(['#fff6c8','#c8f0ff','#ffd0f0','#d8ffc8'])});}
+function drawGemAt(x,y,gc){const s=Math.max(1,R*1.1),px=Math.round(x*R),py=Math.round(y*R),W5=[1,3,5,3,1],W2=[0,1,3,1,0];
+  for(let r=-2;r<=2;r++){ctx.fillStyle=gc[1];ctx.fillRect(px-(W5[r+2]>>1)*s-s*.5,py+r*s,W5[r+2]*s,s);}
+  for(let r=-2;r<=2;r++)if(W2[r+2]){ctx.fillStyle=gc[0];ctx.fillRect(px-(W2[r+2]>>1)*s-s*.5,py+r*s,W2[r+2]*s,s);}
+  ctx.fillStyle='#fff';ctx.fillRect(px-s*1.5,py-s,s,s);
+  if(((tAcc*7)|0)%3===0){ctx.fillRect(px+2*s,py-3*s,s,3*s);ctx.fillRect(px+s,py-2*s,3*s,s);}}
+function linkyQueue(v,q,act){v.state='lact';v.laQ=q.slice();v.la=null;if(act)v.act=act;v.spf=0;v.hx=undefined;v.cut=-1;v.cutT=-1;nextLa(v);}
+function nextLa(v){
+  const it=v.laQ&&v.laQ.shift();
+  if(!it){v.la=null;
+    if(v.resume){const r=v.resume;v.resume=null;v.route=r.route;v.phase=r.phase;v.act=r.act;v.destNode=r.destNode;v.state=v.route.length?'walk':'idle';v.timer=rr(.5,1.2);}
+    else{v.state='idle';v.timer=rr(.8,2);v.act='out and about';}
+    return;}
+  if(it.walkGem){const P=it.walkGem,g=P.gemP;P.gemP=null;
+    if(g&&particles.includes(g)&&!segClear([v.x,v.y],[g.x-P.face*4.2,P.gy],1)){particles.splice(particles.indexOf(g),1);v.gemC=g.gc;v.dir='down';v.flip=false;floatText('A gem!',v.x,v.y-v.h-4,'#c8ffd8');v.la={name:'gem',t:0,f:0,k:-1};v.act='holding up a shiny gem';return;}
+    if(g&&particles.includes(g)){v.gemP=g;v.route=[[g.x-P.face*4.2,P.gy]];v.state='walk';v.phase='toGem';v.act='spotted something shiny';v.la=null;v.spf=0;v.hx=undefined;return;}
+    return nextLa(v);}
+  v.la={name:it.n||null,rest:it.rest||0,hold:it.hold||0,t:0,f:0,k:-1};
+}
+function updateLact(v,dt){
+  const a=v.la;if(!a){nextLa(v);return;}
+  a.t+=dt;
+  if(!a.name){if(a.t>=a.rest)nextLa(v);return;}
+  if(a.name==='oca'){a.f=a.t<.2?0:1+(Math.floor((a.t-.2)/.5)&1);
+    if(a.t>.3){a.nT=(a.nT||0)-dt;if(a.nT<=0){a.nT=rr(.38,.55);noteFx(v);}}
+    if(a.t>=.2+a.hold)nextLa(v);return;}
+  if(a.name==='gem'){a.f=a.t<.2?0:1;
+    if(a.t>.25&&rnd()<dt*10){const g=gemPos(v);spark(g[0]+rr(-4,4),g[1]+rr(-4,3),pick(['#ffffff','#fff6c8',(v.gemC||GEMCOL[0])[0]]),{vx:rr(-6,6),vy:rr(-10,-2),life:rr(.4,.8),gl:1});}
+    if(a.t>=1.35){const g=gemPos(v);burst(g[0],g[1],8,{c:'#fff6c8',v0:4,v1:14,gl:1});nextLa(v);}return;}
+  if(a.name==='pot')return potStep(v,a,dt);
+  const D=LDUR[a.name],f=seqIdx(D,a.t);
+  if(f!==a.k){a.k=f;slashFx(v,a.name,f);}
+  a.f=f;if(a.t>=SUM(D))nextLa(v);
+}
+function linkyTap(v){
+  if(v.alpha<1)return;
+  if(v.state==='lact'&&v.la&&['pot','gem','combo'].includes(v.la.name))return;
+  if(v.state==='lact'&&v.pot)return;
+  if(v.state==='walk'){if(['toQueue','toWell','toBench','leaveBench','toPot','toGem'].includes(v.phase))return;v.resume={route:v.route.slice(),phase:v.phase,act:v.act,destNode:v.destNode};}
+  else if(v.state==='poke'){v.found=true;v.cutT=-1;v.cut=-1;}
+  else if(v.state!=='idle'&&v.state!=='lact')return;
+  if(v.dir!=='side'){v.dir='side';v.flip=rnd()<.5;}
+  linkyQueue(v,[{n:'combo'}],'showing off a sword combo');
+}
+// ---- clay pots by the houses: Linky lifts one, carries it a few steps and throws it; it shatters and sometimes hides a gem ----
+const POT_SPOTS=[{x:127,y:103,face:-1,node:'D1',txt:'by the north-west cottage'},{x:252,y:115,face:-1,node:'GN',txt:'by the mossy cottage gate'},
+  {x:138,y:342,face:1,node:'D3',txt:'by the cottage across the bridge'},{x:371,y:126,face:-1,node:'TD',txt:"by Merrick's tower"}];
+const POTS=[];
+function mkPots(){for(const q of POT_SPOTS){const P={kind:'pot',name:'Clay pot',role:'just a pot',act:'sitting '+q.txt,uid:++UID,x:q.x,y:q.y,home:[q.x,q.y],face:q.face,node:q.node,
+  sp:[q.x-q.face*4.5,q.y],state:'ready',alpha:1,h:6,claim:null,t:0,respawn:0,txt:q.txt};POTS.push(P);chars.push(P);}}
+function respawnPot(P){P.state='ready';P.x=P.home[0];P.y=P.home[1];P.alpha=0;P.t=0;P.gem=false;P.gemP=null;P.act='sitting '+P.txt;}
+function throwPot(v,P){const s=handOff(v,-27,-67);P.state='flying';P.t=0;P.dur=.45;P.x0=s[0];P.ay0=s[1];P.gy=v.y;
+  let k=1;while(k>.3&&!segClear([s[0],v.y],[handOff(v,-27-70*k,0)[0],v.y],2))k-=.1;P.x1=handOff(v,-27-70*k,0)[0];P.dur=.25+.2*k;P.x=s[0];P.y=v.y;P.alpha=1;
+  P.gem=P.forceGem!==undefined?P.forceGem:rnd()<.35;P.forceGem=undefined;P.act='flying through the air';v.act='tossing a clay pot';}
+function potStep(v,a,dt){
+  const P=v.pot;if(!P){nextLa(v);return;}
+  const t=a.t,t0=.8,t1=t0+1.2,t2=t1+.08,t3=t2+.2;
+  if(t<t0){a.f=seqIdx([.25,.15,.4],t);if(a.f>=1&&P.state==='ready'){P.state='held';P.alpha=0;P.act='being carried by Linky';}}
+  else if(t<t1){a.f=(Math.floor((t-t0)/.2)&1)?2:3;v.act='carrying a clay pot';
+    const fw=v.flip?1:-1,nx=v.x+fw*5*dt;if(!blocked(nx,v.y,1.5)&&segClear([nx,v.y],[nx+fw*26,v.y],2))v.x=nx;}
+  else if(t<t2){a.f=4;if(P.state==='held')throwPot(v,P);}
+  else a.f=5;
+  if(P.state==='held'){P.x=v.x;P.y=v.y;}
+  if(t>=t3){v.pot=null;P.claim=null;if(P.gem)v.laQ.unshift({rest:.6},{walkGem:P});nextLa(v);}
+}
+function updatePots(dt){
+  for(const P of POTS){
+    if(P.state==='ready'){P.alpha=Math.min(1,P.alpha+dt*1.8);}
+    else if(P.state==='flying'){P.t+=dt;const u=clamp(P.t/P.dur,0,1);P.x=lerp(P.x0,P.x1,u);P.y=P.gy;
+      if(u>=1){P.state='broken';P.t=0;P.act='in pieces';
+        puff(P.x,P.gy-1,'rgba(200,170,130,.6)',5);
+        for(let i=0;i<6;i++)spark(P.x+rr(-2,2),P.gy-2,pick(['#ba6838','#e49860','#8c4628']),{vx:rr(-16,16),vy:rr(-22,-8),ay:70,life:rr(.3,.6)});
+        P.gemDue=P.gem?.3:-1;}}
+    else if(P.state==='broken'){P.t+=dt;
+      if(P.gemDue>0){P.gemDue-=dt;if(P.gemDue<=0){const g=pick(GEMCOL);P.gemP={k:'item',item:'gem',gc:g,x:P.x,y:P.gy-2,vx:0,vy:-40,ay:120,life:25,max:25,land:P.gy-1.5,add:false,keep:true};particles.push(P.gemP);
+        for(let i=0;i<8;i++)spark(P.x+rr(-4,4),P.gy-3,pick(['#ffffff',g[0],'#fff6c8']),{vx:rr(-12,12),vy:rr(-26,-8),ay:40,life:rr(.5,1),gl:1});}}
+      P.alpha=P.t>2?clamp(1-(P.t-2)/.6,0,1):1;
+      if(P.t>2.6){P.state='gone';P.alpha=0;P.respawn=rr(40,70);}}
+    else if(P.state==='gone'){P.respawn-=dt;
+      if(P.respawn<=0&&!villagers.some(o=>o.alpha>0&&Math.hypot(o.x-P.home[0],o.y-P.home[1])<7)){respawnPot(P);burst(P.x,P.y-3,6,{c:'#fff6c8',v0:4,v1:12,gl:1});}}
+  }
+}
+function drawPot(c,t){
+  if(c.state==='ready'){shadow(c.x,c.y,2.4,.2*c.alpha);drawSprite('pot',0,0,c.x,c.y,{alpha:c.alpha});}
+  else if(c.state==='flying'){const u=clamp(c.t/c.dur,0,1),ay=c.ay0-4.1*Math.sin(Math.PI*u)+(c.gy-c.ay0)*u*u;shadow(c.x,c.gy,2.2,.16);drawSprite('pot',0,0,c.x,ay,{});}
+  else if(c.state==='broken')drawSprite('pot',0,2+Math.min(3,Math.floor(c.t/.08)),c.x,c.y,{alpha:c.alpha});
+}
+function potTap(P){
+  const v=linky;if(!v||P.state!=='ready'||P.claim||v.alpha<1)return;
+  const okWalk=v.state==='walk'&&['stroll','toPoke','toFriend','toPlaza','toOcarina'].includes(v.phase);
+  if(!(v.state==='idle'||v.state==='poke'||okWalk))return;
+  v.ringNode=null;v.cutT=-1;v.cut=-1;P.claim=v;v.pot=P;v.phase='toPot';v.act='off to lift a clay pot';say(v,pick(["Ooh, a pot!","That pot looks suspicious.","Hup! Pot time."]),2.4,true);goTo(v,P.node,[P.sp]);
+  if(v.state!=='walk'){v.state='walk';v.route=[P.sp.slice()];}
+}
 
 // ---------- round 6: flyers (griffin, post owl), the evening elf, shop hat, stream ring, fireworks ----------
 function bez(a,b,c,e){const u=1-e;return [u*u*a[0]+2*u*e*b[0]+e*e*c[0],u*u*a[1]+2*u*e*b[1]+e*e*c[1]];}
@@ -810,6 +1017,9 @@ function updateJuniper(v,dt){
   v.speed=v.spd0;v.turnT=Math.max(0,v.turnT-dt);if(v.state!=='walk'){v.spf=0;v.hx=undefined;}
   if(v.state==='post'){
     v.x=N.JB[0];v.y=N.JB[1];if(v.serving){v.dir='side';v.flip=true;}else{v.dir=(Math.floor(tAcc/4)%3===2)?'side':'down';v.flip=true;}v.act=v.serving?'serving a customer':'minding the magic shop';
+    v.waveCd=(v.waveCd===undefined?rr(8,15):v.waveCd)-dt;
+    if(v.waveCd<=0&&!v.serving&&!(v.waveT>0)){const o=villagers.find(o=>o!==v&&o.alpha===1&&o.state==='walk'&&Math.hypot(o.x-v.x,o.y-v.y)<38);if(o){v.waveT=1.2;v.waveCd=rr(18,32);}else v.waveCd=1;}
+    if(v.waveT>0){v.waveT-=dt;if(!v.serving){v.dir='down';v.flip=false;v.act='waving hello';}}
     v.breakT-=dt;
     if(v.breakT<=0&&!v.serving&&queue.length===0){
       v.state='walk';v.phase='break';v.node='JB';v.act='taking a short break';
@@ -1158,6 +1368,7 @@ function drawChar(c,t){
     case 'griffin':return drawGriffin(c,t);
     case 'owl':return drawOwl(c,t);
     case 'hat':return drawHat(c,t);
+    case 'pot':return drawPot(c,t);
   }
   const x=c.x,y=c.y;
   if(c.state==='fly'){
@@ -1168,46 +1379,50 @@ function drawChar(c,t){
   }
   if(c.state==='sit'||c.state==='sitdown'||c.state==='standup')return drawSit(c,t);
   shadow(x,y,c.shadowW,.2*c.alpha);
-  let row=ROW[c.dir]||0,col=0,dy=0,sway=0;
-  const walking=c.state==='walk';
+  let row=ROW[c.dir]||0,col=0,dy=0,sway=0,sheet=c.sheet;
+  const walking=c.state==='walk'&&!(c.stall>.25); // a walker held up for a moment stands instead of freezing mid-stride
   if(walking){
     const bobK=(c.opt&&c.opt.bob)||1,ramp=Math.min(1,(c.spf||0)*1.6),sf=(c.dir==='side'&&SF[c.sheet])||0;
     if(sf){const f=Math.floor(c.animT)%sf;col=f<0?f+sf:f;dy=-.6*bobK*(.5-.5*Math.cos(2*Math.PI*c.animT/3))*ramp;} // two steps per 6 frames: one soft bob per step
     else{const f=Math.floor(c.animT)&3;col=f;dy=-.6*bobK*(.5-.5*Math.cos(Math.PI*c.animT))*ramp;if(c.dir!=='side'&&!(f&1))sway=(f===0?.6:-.6)*ramp;}
   }
-  else{
-    if(c.state==='buy'||(c===juniper&&c.serving))dy=-.5*Math.abs(Math.sin(t*5));
-    else if(c.state==='cast'&&c.castT>.6&&c.castT<1.1)dy=-1.4;
-    else if(c.state==='tend')dy=-.35*Math.abs(Math.sin(t*3));
-    else if(c.state==='brew')dy=-.3*Math.abs(Math.sin(t*6));
-    else if(c.state==='chat'&&bubbles.some(b=>b.o===c))dy=-.4*Math.abs(Math.sin(t*7));
-    else if(c.state==='poke'&&c.cheering)dy=-1.4*Math.abs(Math.sin(t*10));
+  else{ // round 9: drawn activity pose, or the standing sheet with idle life (blinks, breathing, glances, weight shifts)
+    const P=poseOf(c,t);
+    if(P&&sheetsR[P[0]]){sheet=P[0];row=P[1];col=P[2];}
+    else if(sheetsR[c.sheet+'stand']){sheet=c.sheet+'stand';col=(c.alpha<1||c.state==='pump'||c.state==='walk'||c.state==='enter'||c.state==='exit')?0:lifeCol(c,t);}
+    if(c.state==='buy')dy=-.5*Math.abs(Math.sin(t*5));
+    else if(c.state==='chat'&&!P&&bubbles.some(b=>b.o===c))dy=-.3*Math.abs(Math.sin(t*7));
   }
   let dx=0;
-  if(c.state==='poke'&&c.kick>0&&c.dir==='side')dx=(c.flip?1:-1)*1.8*Math.sin(Math.PI*(1-c.kick/.3));
+  if(c.state==='poke'&&c.kick>0&&c.dir==='side'&&!(c.cut>=0))dx=(c.flip?1:-1)*1.8*Math.sin(Math.PI*(1-c.kick/.3));
   if(c.state==='practice'&&c.mis)dx=Math.sin(t*50)*.5;
-  const breathe=walking?1:1+.012*Math.sin(t*2+c.x);
-  drawSprite(c.sheet,row,col,x+dx,y,{flip:c.dir==='side'&&c.flip,alpha:c.alpha,dy,sx:c.turnT>0?1-.2*Math.sin(Math.PI*(1-c.turnT/.16)):1,squash:(c.squash||1)*breathe,sway,tint:c.soot>0?Math.min(.65,c.soot*.5):0});
+  drawSprite(sheet,row,col,x+dx,y,{flip:c.dir==='side'&&c.flip,alpha:c.alpha,dy,sx:c.turnT>0?1-.2*Math.sin(Math.PI*(1-c.turnT/.16)):1,squash:(c.squash||1),sway,tint:c.soot>0?Math.min(.65,c.soot*.5):0});
+  if(c.state==='brew'&&c.dir==='side'){const cp=cauldronAt(c),al=clamp(c.bT/.25,0,1)*clamp(c.timer/.2,0,1)*c.alpha;
+    if(al>0){shadow(cp[0],cp[1],3.4,.2*al);drawSprite('cauldron',0,Math.floor(t/.22)%3,cp[0],cp[1],{alpha:al,flip:c.flip});}}
+  if(c===linky&&c.state==='lact'&&c.la){
+    if(c.la.name==='pot'&&c.pot&&c.pot.state==='held'){const o=POTHOLD[c.la.f];if(o){const p=handOff(c,o[0],o[1]);drawSprite('pot',0,0,p[0],p[1]+dy,{});}}
+    else if(c.la.name==='gem'){const g=gemPos(c);drawGemAt(g[0],g[1],c.gemC||GEMCOL[0]);}
+  }
   if(c.item&&c.alpha>0)drawItem(c,x,y+dy);
 }
 function drawSit(c,t){
   const b=c.bench,key=c.sheet+'sit',hasSit=!!sheetsR[key];
   const sit=c.state==='sit',moving=!sit;
   const m=(t*.8+c.x*.1)%7,col=m<.18?1:(m>3.4&&m<3.9?2:(m>5.5&&m<5.9?3:0));
-  if(!b){drawSprite(c.sheet,ROW[c.dir]||0,0,c.x,c.y,{flip:c.dir==='side'&&c.flip});return;}
+  if(!b){drawSprite(standKey(c),ROW[c.dir]||0,0,c.x,c.y,{flip:c.dir==='side'&&c.flip});return;}
   if(b.mode==='back'){ // seen from behind, facing the fountain; the backrest occluder hides everything below the shoulders
     let row=1,fl=false,dy=0;
     if(sit){c.glanceT=(c.glanceT===undefined?rr(4,9):c.glanceT)-.016;
       const g=(t*.37+c.uid*1.7)%5;if(g>3.6){row=2;fl=b.flip;} // now and then looks across at the fountain
       dy=Math.sin(t*1.6+c.uid)*.12;}
     if(moving){const q=c.state==='sitdown'?c.sT:c.sT;if(c.dir==='side'){row=2;fl=c.flip;}}
-    drawSprite(c.sheet,row,0,c.x,c.y,{flip:fl,dy,alpha:c.alpha});
+    drawSprite(standKey(c),row,0,c.x,c.y,{flip:fl,dy,alpha:c.alpha});
     return;
   }
   // front: sits on the plank facing us; walks in/out with the ordinary front sprite and crossfades into the seated pose
   const standA=sit?0:(c.state==='sitdown'?clamp(1-(c.sT-.34-.45)/.28,0,1):clamp((c.sT-.15)/.2,0,1));
   const sitA=hasSit?1-standA:0;
-  if(standA>0.001){const st=Math.min(1,standA+(hasSit?0:1));drawSprite(c.sheet,ROW[c.dir]||0,0,c.x,c.y,{flip:c.dir==='side'&&c.flip,alpha:st*c.alpha});}
+  if(standA>0.001){const st=Math.min(1,standA+(hasSit?0:1));drawSprite(standKey(c),ROW[c.dir]||0,0,c.x,c.y,{flip:c.dir==='side'&&c.flip,alpha:st*c.alpha});}
   if(sitA>0.001){const bob=Math.sin(t*1.8+c.uid)*.1;drawSprite(key,0,col,c.x,c.y,{flip:b.flip,dy:bob,alpha:sitA*c.alpha});}
 }
 function drawAnimal(a,t){
@@ -1287,13 +1502,19 @@ function drawParticles(dt,pass){ // pass 0 = ordinary, 1 = additive
       ctx.fillStyle='#fff';const s=Math.max(1,Math.round(R*1.1));ctx.fillRect(Math.round(p.x*R),Math.round(p.y*R),s,s);ctx.fillStyle=p.c[0];ctx.fillRect(Math.round(p.x*R)-s,Math.round(p.y*R),s,s);
     }else if(p.k==='flash'){
       const u=p.life/p.max;ctx.globalAlpha=u*.85;ctx.drawImage(glowSpr(p.c),(p.x-22)*R,(p.y-22)*R,44*R,44*R);
+    }else if(p.k==='slash'){ // round 9: sword swoosh
+      ctx.globalAlpha=Math.min(1,p.life/p.max*1.4)*.85;ctx.strokeStyle='#fffbe8';ctx.lineWidth=Math.max(1,R*.75);ctx.beginPath();
+      if(p.line){ctx.moveTo(p.x0*R,p.y*R);ctx.lineTo(p.x1*R,p.y*R);}else ctx.arc(p.x*R,p.y*R,p.r*R,p.a0*Math.PI/180,p.a1*Math.PI/180);
+      ctx.stroke();ctx.globalAlpha*=.5;ctx.strokeStyle='#c8e8ff';ctx.lineWidth=Math.max(1,R*.4);ctx.beginPath();
+      if(p.line){ctx.moveTo(p.x0*R,(p.y+.6)*R);ctx.lineTo(p.x1*R,(p.y+.6)*R);}else ctx.arc(p.x*R,p.y*R,(p.r-.6)*R,(p.a0+8)*Math.PI/180,(p.a1-8)*Math.PI/180);ctx.stroke();
+    }else if(p.k==='note'){ // round 9: ocarina notes (drawn, silent)
+      const u=Math.max(1,Math.round(R*.5)),px=Math.round((p.x+Math.sin(tAcc*3+p.ph)*.8)*R),py=Math.round(p.y*R);
+      ctx.fillStyle='#3c2850';ctx.fillRect(px-2*u,py-u,4*u,2*u);ctx.fillRect(px-u,py-1.5*u,3*u,3*u);ctx.fillRect(px+1.5*u,py-8*u,u,7.5*u);
+      ctx.fillRect(px+1.5*u,py-8*u,2.5*u,u);ctx.fillRect(px+3*u,py-7*u,u,u);ctx.fillRect(px+3.5*u,py-6.5*u,u,1.5*u);
+      ctx.fillStyle=p.c;ctx.fillRect(px-1.5*u,py-.5*u,3*u,u);ctx.fillRect(px-.5*u,py-u,2*u,2*u);ctx.fillRect(px+1.8*u,py-7.5*u,.5*u,5*u);
     }else if(p.k==='item'){
       ctx.globalAlpha=Math.min(1,p.life*2);
-      if(p.item==='gem'){const s=Math.max(1,R*1.1),px=Math.round(p.x*R),py=Math.round(p.y*R),W5=[1,3,5,3,1],W2=[0,1,3,1,0];
-        for(let r=-2;r<=2;r++){ctx.fillStyle=p.gc[1];ctx.fillRect(px-(W5[r+2]>>1)*s-s*.5,py+r*s,W5[r+2]*s,s);}
-        for(let r=-2;r<=2;r++)if(W2[r+2]){ctx.fillStyle=p.gc[0];ctx.fillRect(px-(W2[r+2]>>1)*s-s*.5,py+r*s,W2[r+2]*s,s);}
-        ctx.fillStyle='#fff';ctx.fillRect(px-s*1.5,py-s,s,s);
-        if(((tAcc*7)|0)%3===0){ctx.fillRect(px+2*s,py-3*s,s,3*s);ctx.fillRect(px+s,py-2*s,3*s,s);}}
+      if(p.item==='gem')drawGemAt(p.x,p.y,p.gc);
       else if(p.item==='ring'){const px=p.x*R,py=p.y*R;ctx.strokeStyle='#8a5a12';ctx.lineWidth=Math.max(2,R*1.9);ctx.beginPath();ctx.ellipse(px,py,2.6*R,2.4*R,0,0,6.283);ctx.stroke();
         ctx.strokeStyle='#f6d34a';ctx.lineWidth=Math.max(1,R*1.2);ctx.stroke();}
       else if(p.item==='coin'){ctx.fillStyle='#f6d34a';ctx.fillRect(Math.round(p.x*R),Math.round(p.y*R),Math.max(2,R*2),Math.max(2,R*2));}
@@ -1392,7 +1613,7 @@ function frame(ts){
     updateFrog(frog,dt);
     for(const s of sweepers)updateSweeper(s,dt);
     chatTick(dt);updateGriffin(griffin,dt);updateOwl(owl,dt);updateElf(elf,dt);updateHat(hatObj,dt);updateRing(dt);updateFireworks(dt);
-    updatePortal(dt);updateFountain(dt);
+    updatePortal(dt);updateFountain(dt);updatePots(dt);
     wishT-=dt;if(wishT<=0){wishT=rr(45,90);wellWish();}
     if(nightK>.02)for(const f of fairies)updateFairy(f,dt);
     for(const w of wisps)updateWisp(w,dt);
@@ -1468,7 +1689,9 @@ const TAP={helm:["Halt! ...Just kidding. Hello, traveler.","The bridge is safe. 
   luthien:["Good day to you, dear.","Do try the fountain. It's enchanting.","Mind your manners and your hat."],
   griffin:["Skree!","Skreeeee! (Translation: hello.)"],elf:["Fair evening to you.","The stars will be out soon."],owl:["Hoo! Special delivery!","Hoo-hoo. Mail waits for no one."]};
 function react(c){ // tap reactions
+  if(c.kind==='pot'){potTap(c);return;}
   if(c.id&&TAP[c.id]||c.kind==='griffin'||c.kind==='owl'){const L=TAP[c.id||c.kind];if(L&&c.alpha>0){say(c,pick(L),3,true);burst(c.x,c.y-(c.lift||0)-c.h*.8,6,{c:pick(MAGIC),v0:6,v1:18,gl:1});}
+    if(c===linky)linkyTap(c);
     if(c.kind==='griffin'&&c.state==='perch')c.timer=Math.min(c.timer,2.2);return;}
   if(c===hatObj){hatTalk(hatObj);return;}
   if(c===frog)frogTalk(frog);
@@ -1550,18 +1773,19 @@ async function start(){
   const names=[...PROPS,...Object.keys(CHARS).map(k=>k+'_sheet')];
   const [bgI,occI]=await Promise.all([loadImg('assets/village_bg.webp'),loadImg('assets/village_occ.webp'),loadMaps()]);
   assets.bg=bgI;assets.occ=occI;
-  const R8=new Set(['theo_sheet','finn_sheet','linky_sheet','griffin_sheet']);
-  const imgs=await Promise.all(names.map(n=>loadImg('assets/'+n+'.png'+(R8.has(n)?'?r8':''))));
+  const R8=new Set(['theo_sheet','finn_sheet','linky_sheet','griffin_sheet']),R9=/(stand|act|chat)_sheet$|^(cauldron|pot)_sheet$/;
+  const imgs=await Promise.all(names.map(n=>loadImg('assets/'+n+'.png'+(R9.test(n)?'?r9':R8.has(n)?'?r8':''))));
   names.forEach((n,i)=>{assets[n.replace('_sheet','')]=imgs[i];});
   merrick=mkVillager('merrick','Merrick the Grey','wizard',17,'TD',{strideS:3.134,h:34,stride:4.4,sw:8.4,w:{cast:5,tower:3,portal:2,plaza:2,stroll:3,house:1,well:1,stall:1,bench:1,friend:1.5}});
   rosie=mkVillager('rosie','Rosie','potion brewer',23,'E1',{strideS:2.721,h:28,stride:4,w:{house:3,stall:3,well:1,plaza:2,stroll:2,brew:3,bench:1.2,friend:1.5}});
   theo=mkVillager('theo','Theo','moonflower grower',19.5,'W1',{strideS:2.667,h:30,stride:4,w:{house:2,stall:2,well:3,plaza:2,stroll:3,tend:4,bench:1.2,friend:1.5}});
-  mabel=mkVillager('mabel','Mabel','hedge witch',12,'RS',{strideS:2.252,h:28,stride:3.4,w:{house:3,stall:2,well:1,plaza:3,stroll:1,fly:2.5,bench:1.5,friend:1.5}});
+  mabel=mkVillager('mabel','Mabel','hedge witch',12,'RS',{strideS:2.252,h:28,stride:3.4,w:{house:3,stall:2,well:1,plaza:3,stroll:1,fly:2.5,sweep:2.5,bench:1.5,friend:1.5}});
   finn=mkVillager('finn','Finn','apprentice mage',11,'RSE',{strideS:1.667,h:24,stride:2.5,sw:6.4,w:{house:1,stall:1,well:2,plaza:2,stroll:4,practice:4,bench:1,friend:1.5}});
   juniper=mkVillager('juniper','Juniper','magic-item seller',21,'JB',{h:28,stride:4,w:{}});
   helm=mkVillager('helm','Sir Helm','knight',17,'GS',{strideS:3.107,h:32,stride:4.2,sw:8.4,w:{patrol:6,plaza:1,stroll:1,bench:1.2,friend:1.2}});
-  linky=mkVillager('linky','Linky','hero of the wild',17,'SE1',{strideS:2.333,h:26,stride:3.5,sw:7,w:{poke:5,stroll:3,plaza:1,house:1,stall:1,well:1,bench:1.2,friend:1.5}});
+  linky=mkVillager('linky','Linky','hero of the wild',17,'SE1',{strideS:2.333,h:26,stride:3.5,sw:7,w:{poke:5,drill:2,ocarina:1.5,pot:2.2,stroll:3,plaza:1,house:1,stall:1,well:1,bench:1.2,friend:1.5}});
   luthien=mkVillager('luthien','Lady Luthien','lady in waiting',15,'RNW',{strideS:1.842,h:30,stride:3.9,sw:8.6,bob:.45,w:{stroll:4,plaza:3,bench:2.5,house:1,stall:1,friend:3}});
+  mkPots();
   elf=mkElf();griffin=mkGriffin();owl=mkOwl();hatObj=mkHat();
   juniper.state='post';juniper.breakT=rr(50,90);juniper.serving=null;juniper.act='minding the magic shop';
   cat=mkAnimal('cat',222,343);dog=mkAnimal('dog',306,172);dragon=mkAnimal('dragon',318,170);
@@ -1594,11 +1818,26 @@ function trigger(what,a){ // test hooks: FV.trigger('portal'|'wish'|'flame'|'mis
   else if(what==='bench'){const v=villagers.find(o=>o.id===a);const b=BENCHES[arguments[2]||0];if(v&&b&&!b.occ){b.occ=v;v.bench=b;v.phase='toBench';v.act='heading to a bench';v.state='walk';v.spf=0;v.hx=undefined;v.timer=0;v.destNode=b.node;v.route=[N[b.node].slice(),b.sp.slice()];}}
   else if(what==='standup'){const v=villagers.find(o=>o.id===a);if(v&&v.state==='sit')standUp(v);}
   else if(what==='chat'){const A=villagers.find(o=>o.id===a),B=villagers.find(o=>o.id===arguments[2]);if(A&&B){A.chatCd=B.chatCd=0;B.x=A.x+24;B.y=A.y;A.state=B.state='idle';A.timer=B.timer=5;startChat(A,B);}}
-  else if(what==='gem')gemFind(linky);
+  else if(what==='gem'||what==='gemhold')gemFind(linky);
+  // round 9 hooks: FV.trigger('stir'|'tend'|'staff'|'practice'|'sweep'|'serve'|'wave'|'grass'|'combo'|'drill'|'ocarina'|'pot'|'potreset'|'place')
+  else if(what==='stir'){const v=rosie;r9free(v);startBrew(v,a||6);}
+  else if(what==='tend'){const v=theo;r9free(v);const n=a==='MA'?'MA':'MB';v.x=N[n][0];v.y=N[n][1];v.node=v.destNode=n;v.state='tend';v.timer=arguments[2]||7;v.dir='side';v.flip=n==='MB';v.act='tending the glowing flower beds';v.tT=0;}
+  else if(what==='staff'){r9free(merrick);castPose(merrick,pick(['stars','ring','petals']),a&&a.dur||3.5);if(a&&a.dir){merrick.dir=a.dir;merrick.flip=!!a.flip;}}
+  else if(what==='practice'){const v=finn;r9free(v);v.state='practice';v.timer=a&&a.dur||5;v.pT=0;v.pN=0;v.misfire=!!(a&&a.misfire);v.mis=false;v.act='practising sparks';v.dir=a&&a.dir||'down';v.flip=!!(a&&a.flip);}
+  else if(what==='sweep'){const v=mabel;r9free(v);v.state='sweep';v.timer=a||7;v.dir='side';v.flip=!!arguments[2];v.sT=0;v.sF=-1;v.act='sweeping the path';}
+  else if(what==='serve'){const v=villagers.find(o=>o.id===(a||'rosie'));if(v&&v!==juniper&&juniper.state==='post'&&!juniper.serving){r9free(v);dropFromQueue(v);v.x=SLOTS[0][0];v.y=SLOTS[0][1];queue.unshift(v);queue.forEach((q,i)=>q.qi=i);v.state='queue';v.phase='toQueue';v.node='E2';faceCounter(v);}}
+  else if(what==='wave'){juniper.waveT=a||2;}
+  else if(what==='grass'){const v=linky;r9free(v);startPoke(v,a||4,!!arguments[2]);v.forceCut=true;v.pT=.9;}
+  else if(what==='combo'){const v=linky;r9free(v);v.dir='side';if(a!==undefined)v.flip=!!a;linkyQueue(v,[{n:'combo'}],'showing off a sword combo');}
+  else if(what==='drill'){const v=linky;r9free(v);v.dir='side';linkyQueue(v,[{n:'combo'},{rest:.8},{n:'combo'},{rest:.8},{n:'combo'}],'practising his sword moves');}
+  else if(what==='ocarina'){const v=linky;r9free(v);v.dir='down';v.flip=false;linkyQueue(v,[{n:'oca',hold:a||5}],'playing a little tune');}
+  else if(what==='pot'){const P=POTS[a||0];if(P&&P.state!=='ready')respawnPot(P);const v=linky;if(P&&!P.claim){r9free(v);P.claim=v;v.pot=P;if(arguments[2]){v.x=P.sp[0];v.y=P.sp[1];v.node=P.node;v.dir='side';v.flip=P.face>0;if(arguments[3]!==undefined)P.forceGem=arguments[3];linkyQueue(v,[{n:'pot'}],'lifting a clay pot');}else{v.phase='toPot';v.act='eyeing a clay pot';goTo(v,P.node,[P.sp]);}}}
+  else if(what==='potreset'){for(const P of POTS)respawnPot(P);}
+  else if(what==='place'){const v=villagers.find(o=>o.id===a)||(a==='elf'?elf:null);const o=arguments[2]||{};if(v){r9free(v);v.x=o.x;v.y=o.y;v.dir=o.dir||'down';v.flip=!!o.flip;v.state='idle';v.timer=o.t||20;v.lookT=o.t||20;v.alpha=1;if(v===elf){v.state='pause';}}}
   else if(what==='poke'){linky.state='walk';linky.phase='toPoke';linky.route=[];goTo(linky,'MA');}
 }
 window.addEventListener('resize',()=>{fit();});
-window.FV={BENCHES,PERCHES,RINGE,FW,get helm(){return helm;},get linky(){return linky;},get luthien(){return luthien;},get griffin(){return griffin;},get owl(){return owl;},get elf(){return elf;},get hat(){return hatObj;},LETTERS,bubbles,N,EDGES,SLOTS,MAPS:()=>MAPS,inWater,ducks,villagers,chars,validateGraph,blocked,segClear,get R(){return R;},get R0(){return R0;},queue:()=>queue,view,items,LIGHTS,trigger,portal,particles,
+window.FV={POTS,poseOf,BENCHES,PERCHES,RINGE,FW,get helm(){return helm;},get linky(){return linky;},get luthien(){return luthien;},get griffin(){return griffin;},get owl(){return owl;},get elf(){return elf;},get hat(){return hatObj;},LETTERS,bubbles,N,EDGES,SLOTS,MAPS:()=>MAPS,inWater,ducks,villagers,chars,validateGraph,blocked,segClear,get R(){return R;},get R0(){return R0;},queue:()=>queue,view,items,LIGHTS,trigger,portal,particles,
   setHour(h){hourNow=h;},get nightK(){return nightK;},zoomAt,zoomOut,fairies,wisps,lanterns,sweepers,get frog(){return frog;},get dragon(){return dragon;},get merrick(){return merrick;},get cat(){return cat;},get dog(){return dog;}};
 fit();
 start();

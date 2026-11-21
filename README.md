@@ -5,6 +5,20 @@
 A cozy, dense, slightly magical pixel village for pure fun, drawn on a single 480x360 world view
 (scaled to fit the window in quarter steps, backing store at 2-3x so it stays sharp).
 
+## Round 9: standing still, little activities, Linky's adventures
+- **Standing poses**: everyone who isn't walking (all villagers, Juniper and the evening elf) now uses a real feet-together standing frame
+  for every facing instead of the walk's contact frame. A walker held up for a moment also stands instead of freezing mid-stride.
+- **Idle life**: blinks every 2-5 s, a drawn breathing frame, occasional glances or head turns and weight shifts (`<id>stand_sheet.png`,
+  3 rows x 8 columns: stand, blink, half-blink, breathe, glance/turn L, R, weight shift L, R). Sir Helm doesn't blink (closed helmet).
+- **Activity poses** (`<id>act_sheet.png`): Rosie stirs a little cauldron, Theo crouches to tend the beds, Merrick raises his staff,
+  Finn casts in practice, Mabel sweeps the path (new activity), Juniper serves with a potion and waves to customers and passers-by. Chatters
+  gesture while they talk (side view).
+- **Linky** (`linkyact_sheet.png`, 120x112 cells, same centre and feet): grass cuts with his sword mixed in with the pokes (a find still
+  ends in a gem), the gem held overhead (replaces the cheer bounce), a sword-practice drill, a silent ocarina tune with floating notes, and
+  clay pots by the houses that he lifts, carries a few steps and throws; they shatter, sometimes hide a gem, and come back after a while.
+  Tapping Linky makes him show off his sword combo; tapping a pot sends him to it.
+- Test hooks: `FV.trigger('stir'|'tend'|'staff'|'practice'|'sweep'|'serve'|'wave'|'grass'|'gemhold'|'combo'|'drill'|'ocarina'|'pot'|'potreset'|'place')`.
+
 ## Round 6: new faces, livelier movement
 - **Renamed** to Emberwood Village (title, header, README). Repo and file names are unchanged.
 - **Movement**: walkers ease in and out of each stride, keep a smooth heading around corners, bob in step with the walk
