@@ -109,7 +109,7 @@ const CHARS={ // sheet meta: cell w,h and feet anchor (sheet px), rows x cols; r
   dragon:{cw:72,ch:76,ay:72,rows:3,cols:4},frog:{cw:60,ch:76,ay:72,rows:3,cols:4},fairy:{cw:40,ch:52,ay:48,rows:3,cols:4},
   mabelfly:{cw:132,ch:136,ay:132,rows:1,cols:4},
   helm:{cw:80,ch:136,ay:132,rows:3,cols:6},linky:{cw:72,ch:112,ay:108,rows:3,cols:6},luthien:{cw:84,ch:124,ay:120,rows:3,cols:6},
-  elf:{cw:96,ch:152,ay:148,rows:3,cols:4},griffin:{cw:152,ch:180,ay:176,rows:5,cols:4},owl:{cw:52,ch:56,ay:52,rows:3,cols:4},hat:{cw:56,ch:68,ay:64,rows:3,cols:4},
+  elf:{cw:96,ch:152,ay:148,rows:3,cols:6},griffin:{cw:152,ch:180,ay:176,rows:5,cols:4},owl:{cw:52,ch:56,ay:52,rows:3,cols:4},hat:{cw:56,ch:68,ay:64,rows:3,cols:4},
   // seated poses: row 0 = front, row 1 = side (facing left)
   merricksit:{cw:84,ch:148,ay:144,rows:2,cols:4},rosiesit:{cw:56,ch:116,ay:112,rows:2,cols:4},theosit:{cw:68,ch:124,ay:120,rows:2,cols:4},
   mabelsit:{cw:68,ch:124,ay:120,rows:2,cols:4},finnsit:{cw:56,ch:100,ay:96,rows:2,cols:4},luthiensit:{cw:80,ch:120,ay:116,rows:2,cols:4},linkysit:{cw:72,ch:108,ay:104,rows:2,cols:4}
@@ -186,6 +186,7 @@ function fit(){
   R=(view.tz>1||view.z>1.001)?R0*2:R0;
   rebuild();
   const zb2=document.getElementById('zoom');
+  const bb=document.getElementById('back');if(bb){bb.style.left=(cv.offsetLeft+8)+'px';bb.style.top=(cv.offsetTop+8)+'px';}
   if(zb2){zb2.style.right='auto';zb2.style.bottom='auto';zb2.style.left=(cv.offsetLeft+cv.offsetWidth-46)+'px';zb2.style.top=(cv.offsetTop+cv.offsetHeight-46)+'px';}
 }
 function mk(w,h){const c=document.createElement('canvas');c.width=Math.max(1,w);c.height=Math.max(1,h);return c;}
@@ -248,13 +249,370 @@ let tAcc=0;
 let hourNow=0,tint=[255,255,255],nightK=0,hourT=0; // day/night state (updated each frame)
 
 // ---------- particles / effects ----------
-function spark(x,y,c,o){o=o||{};if(particles.length>520)return;
+function spark(x,y,c,o){o=o||{};const PL=fxRoom?room.fx:particles;if(PL.length>520)return;
   const life=o.life||rr(.6,1.2);
-  particles.push({k:'spark',x,y,vx:o.vx!==undefined?o.vx:rr(-12,12),vy:o.vy!==undefined?o.vy:rr(-24,-6),ay:o.ay!==undefined?o.ay:12,life,max:life,c:c||pick(MAGIC),s:o.s||1,add:true,ph:rnd()*6.28,gl:o.gl||0});}
+  PL.push({k:'spark',x,y,vx:o.vx!==undefined?o.vx:rr(-12,12),vy:o.vy!==undefined?o.vy:rr(-24,-6),ay:o.ay!==undefined?o.ay:12,life,max:life,c:c||pick(MAGIC),s:o.s||1,add:true,ph:rnd()*6.28,gl:o.gl||0});}
 function burst(x,y,n,o){o=o||{};for(let i=0;i<n;i++){const a=rnd()*6.283,v=rr(o.v0||10,o.v1||34);spark(x,y,o.c||pick(MAGIC),{vx:Math.cos(a)*v,vy:Math.sin(a)*v*.8-(o.up||8),ay:o.ay!==undefined?o.ay:18,life:rr(.5,1.3),s:o.s||1,gl:o.gl});}}
-function puff(x,y,c,n){for(let i=0;i<n;i++)if(particles.length<520){const life=rr(.7,1.2);particles.push({k:'puff',x:x+rr(-2,2),y,vx:rr(-8,8),vy:rr(-16,-4),ay:-4,life,max:life,c,s:rr(1.6,3.2),add:false,ph:0});}}
-function floatText(text,x,y,c){floaters.push({text,x,y,vy:-9,life:2.1,max:2.1,c:c||'#fff6c8'});}
+function puff(x,y,c,n){const PL=fxRoom?room.fx:particles;for(let i=0;i<n;i++)if(PL.length<520){const life=rr(.7,1.2);PL.push({k:'puff',x:x+rr(-2,2),y,vx:rr(-8,8),vy:rr(-16,-4),ay:-4,life,max:life,c,s:rr(1.6,3.2),add:false,ph:0});}}
+function floatText(text,x,y,c,sz){floaters.push({text,x,y,vy:-9,life:2.1,max:2.1,c:c||'#fff6c8',room:fxRoom,sz:sz||(fxRoom?1.35:1)});}
 function say(o,text,life,px){for(let i=bubbles.length-1;i>=0;i--)if(bubbles[i].o===o)bubbles.splice(i,1);bubbles.push({o,text,life:life||4.2,max:life||4.2,px:!!px});}
+// ---------- round 9 stage 3: Merrick's tower interior (a separate painted room, characters drawn 3x) ----------
+// Tap the tower door (or ?room=tower) -> full-screen fade into the room. The room mirrors the village's "inside the tower"
+// state: Merrick (and Finn on apprentice visits) get an indoor avatar while their village self is 'inside' TD; the room
+// decides when they walk back out. The whole village keeps updating underneath; only its drawing is skipped.
+const ROOM_K=3; // characters indoors are drawn 3x their village size (the room painting is the same 1152x864 / 2.4 px per world px)
+const TOWER={
+  occ:{"nx":1152,"pieces":[{"n":"stair_newel","x":180.0,"y":110.0,"w":44,"h":116,"ay":0,"sy":158},{"n":"telescope","x":285.833,"y":63.75,"w":159,"h":236,"ay":116,"sy":160},{"n":"crystal_pedestal","x":331.667,"y":130.0,"w":126,"h":212,"ay":352,"sy":216},{"n":"desk","x":51.667,"y":195.833,"w":256,"h":207,"ay":564,"sy":276},{"n":"potion_table","x":305.833,"y":225.833,"w":260,"h":188,"ay":771,"sy":302},{"n":"near_wall","x":0.0,"y":175.833,"w":1152,"h":442,"ay":959,"sy":330}]},
+  walk:[[218,350],[218,296],[200,290],[172,286],[160,274],[160,218],[134,214],[124,202],[124,172],[128,150],[158,150],[166,160],[214,160],[220,126],[282,126],[292,140],[298,166],[330,172],[330,222],[316,236],[304,252],[302,280],[290,288],[254,294],[252,350]],
+  nodes:{MAT:[234,334],IN:[234,292],MID:[238,212],DESK:[172,262],APPR:[220,242],SHELF:[132,204],HEARTH:[146,164],STAIR:[206,168],BACK:[250,136],
+    SCOPE:[288,186],BALL:[314,218],POTION:[292,272],FRUG:[244,226]},
+  edges:[['MAT','IN'],['IN','MID'],['IN','APPR'],['IN','POTION'],['IN','DESK'],['MID','APPR'],['APPR','DESK'],['MID','DESK'],['MID','SHELF'],['SHELF','HEARTH'],
+    ['HEARTH','STAIR'],['MID','STAIR'],['STAIR','BACK'],['MID','BACK'],['BACK','SCOPE'],['MID','SCOPE'],['SCOPE','BALL'],['MID','BALL'],['BALL','POTION'],
+    ['MID','POTION'],['MID','FRUG'],['FRUG','APPR'],['FRUG','BALL'],['FRUG','POTION'],['IN','FRUG']],
+  climb:[[206,150],[201,128],[190,108],[182,88],[188,68]], // up the spiral stair (fades out on the way up)
+  lights:[{x:139,y:126,r:44,c:'255,150,70',k:'fire'},{x:70,y:186,r:15,c:'255,196,104',k:'candle'},{x:133,y:215,r:15,c:'255,196,104',k:'candle'},
+    {x:53,y:231,r:15,c:'255,196,104',k:'candle'},{x:357,y:146,r:30,c:'196,140,255',k:'ball'},{x:110,y:228,r:20,c:'255,230,160',k:'book'}],
+  props:{ball:{x:357,y:146,r:20},orrery:{x:419,y:176,r:20},book:{x:100,y:228,r:26},scope:{x:318,y:100,r:24},hearth:{x:140,y:126,r:22},stair:{x:200,y:80,r:30}},
+  mat:{x0:212,x1:258,y0:300,y1:356},
+  win:{x0:333,x1:358,y0:38,y1:80}
+};
+const TN=TOWER.nodes;
+const room={mode:'village',fade:0,fdir:0,want:null,saved:null,av:[],fx:[],chatT:20,ballPulse:0,orrT:0,zT:0,flare:0,infoTxt:null};
+let fxRoom=false,roomR=null,roomSheets={},roomSheetsR=0;
+const radj={};for(const k in TN)radj[k]=[];for(const [a,b] of TOWER.edges){radj[a].push(b);radj[b].push(a);}
+function inPoly(x,y,P){let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];if(((a[1]>y)!==(b[1]>y))&&(x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0]))c=!c;}return c;}
+function roomWalkable(x,y){return inPoly(x,y,TOWER.walk);}
+function roomSegClear(a,b){const n=Math.ceil(dist(a,b)/2);for(let i=0;i<=n;i++){const t=i/n;if(!roomWalkable(lerp(a[0],b[0],t),lerp(a[1],b[1],t)))return false;}return true;}
+function validateRoom(){const bad=[];for(const k in TN)if(!roomWalkable(TN[k][0],TN[k][1]))bad.push('node '+k);
+  for(const [a,b] of TOWER.edges)if(!roomSegClear(TN[a],TN[b]))bad.push('edge '+a+'-'+b);return bad;}
+function roomRoute(a,b){if(a===b)return [a];const d={},p={},q=new Set(Object.keys(TN));for(const k of q)d[k]=1e9;d[a]=0;
+  while(q.size){let u=null;for(const k of q)if(u===null||d[k]<d[u])u=k;q.delete(u);if(u===b)break;
+    for(const v of radj[u]){const nd=d[u]+dist(TN[u],TN[v]);if(nd<d[v]){d[v]=nd;p[v]=u;}}}
+  const out=[b];while(out[0]!==a){out.unshift(p[out[0]]);if(out[0]===undefined)return [a,b];}return out;}
+function towerNight(){return hourNow>=21.5||hourNow<6.25;}
+// Finn's apprentice visits: 2 or 3 daytime windows per (Eastern) day, picked from the date so they are stable all day
+let APPR={key:null,slots:[]};
+function etDateKey(){if(HOUR_FLAG!==null)return 'demo';try{return new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date());}catch(e){return new Date().toDateString();}}
+function apprSlots(){const k=etDateKey();if(APPR.key!==k){let h=7;for(const ch of k)h=(h*31+ch.charCodeAt(0))|0;const r=mulberry32(h);const n=r()<.5?2:3;
+  const base=n===3?[10,13,15.5]:[10.5,14.5];APPR={key:k,slots:base.map(b=>({h0:b+(r()-.5)*.8,len:.75,done:false}))};}return APPR.slots;}
+function apprSlotNow(){if(towerNight())return null;for(const s of apprSlots())if(!s.done&&hourNow>=s.h0&&hourNow<s.h0+s.len)return s;return null;}
+function avOf(id){return room.av.find(a=>a.id===id)||null;}
+function merrickHome(){const m=avOf('merrick');return !!(m&&!m.leaving&&m.state!=='climb'&&m.state!=='upstairs'&&m.state!=='descend');}
+// ---- village side ----
+function roomArrive(v,at){ // v has just gone 'inside' the tower door
+  if(avOf(v.id))return avOf(v.id);
+  v.roomCtl=true;v.alpha=0;
+  const a={v,id:v.id,room:true,kind:'roomav',name:v.name,role:v.role,x:TN.MAT[0],y:TN.MAT[1]+12,dir:'up',flip:false,state:'walk',route:[],alpha:0,node:'MAT',
+    act:'coming in',timer:0,t:0,animT:0,spf:0,h:v.h*ROOM_K,stride:v.stride*ROOM_K,strideS:(v.strideS||0)*ROOM_K,speed:v.spd0*2.4,shadowW:v.shadowW*ROOM_K,
+    sheet:v.sheet,uid:v.uid,life:null,left:0,pose:null,gNext:rr(2,4),leaving:false};
+  if(at&&TN[at]){a.x=TN[at][0];a.y=TN[at][1];a.node=at;a.alpha=1;}
+  if(v===merrick){const night=towerNight()||v.bed;a.left=night?1+(rnd()*2|0):2+(rnd()*3|0);a.night=night;}
+  else{a.tLeft=rr(150,240);}
+  room.av.push(a);
+  avNext(a);
+  return a;
+}
+function roomRelease(v){ // the avatar has walked out of the door mat: the village self comes out of TD
+  const i=room.av.findIndex(a=>a.v===v);if(i>=0)room.av.splice(i,1);
+  if(v.roomCtl){v.roomCtl=false;v.timer=0;}v.bed=false;v.appr=false;
+}
+function vAct(a,txt){a.act=txt;a.v.act=txt+(/tower|upstairs/.test(txt)?'':' in the tower');}
+// ---- indoor activities ----
+const RACT={
+  merrick:{DESK:{dir:'side',flip:false,d:[25,45],t:'reading his spellbook',w:4},BALL:{dir:'side',flip:true,d:[16,28],t:'gazing into the crystal ball',w:3},
+    SCOPE:{dir:'up',flip:false,d:[18,32],t:'peering through the telescope',w:1.2,wn:5},SHELF:{dir:'up',flip:false,d:[10,18],t:'browsing his bookshelves',w:2,wn:1},
+    BACK:{dir:'up',flip:false,d:[8,14],t:'hunting for an old scroll',w:1.4},HEARTH:{dir:'up',flip:false,d:[12,20],t:'tending the hearth',w:1.2,wn:2.5},
+    POTION:{dir:'side',flip:true,d:[14,24],t:'brewing at the potion table',w:2}},
+  finn:{FRUG:{dir:'down',flip:false,d:[14,24],t:'practising spells on the rug',w:4},APPR:{dir:'side',flip:false,d:[12,20],t:'watching Master Merrick',w:2.5},
+    POTION:{dir:'side',flip:true,d:[10,16],t:'helping with the potions',w:1.5}}
+};
+function avTaken(a){const s=new Set();for(const o of room.av)if(o!==a){if(o.dest)s.add(o.dest);if(o.node)s.add(o.node);}return s;}
+function avGo(a,node,then){
+  const names=roomRoute(a.node,node);let pts=names.map(n=>TN[n].slice());
+  if(pts.length&&Math.hypot(pts[0][0]-a.x,pts[0][1]-a.y)<2)pts.shift();
+  a.route=pts;a.dest=node;a.state='walk';a.then=then||avStartAct;a.pose=null;a.spf=0;
+}
+function avNext(a){
+  a.pose=null;const id=a.id,m=avOf('merrick'),f=avOf('finn');
+  if(id==='merrick'){
+    if(a.forceBed||(towerNight()&&a.left<=0)){return avBed(a);}
+    if(!towerNight()&&a.left<=0&&!(f&&!f.leaving))return avLeave(a);
+  }else{
+    if(a.tLeft<=0||!m||!merrickHome()||towerNight())return avLeave(a);
+  }
+  const night=towerNight(),A=RACT[id],taken=avTaken(a);
+  const cand=Object.keys(A).filter(k=>!taken.has(k)&&k!==a.lastAct);
+  if(!cand.length)return avLeave(a);
+  const w=k=>{let x=night&&A[k].wn!==undefined?A[k].wn:A[k].w;
+    if(id==='finn'&&k==='APPR'&&m&&(m.dest==='DESK'))x*=3;
+    if(id==='merrick'&&f&&k==='DESK'&&!f.leaving)x*=1.4;return x;};
+  let r=rnd()*cand.reduce((s,k)=>s+w(k),0),pickK=cand[0];for(const k of cand){r-=w(k);if(r<=0){pickK=k;break;}}
+  a.lastAct=pickK;vAct(a,'heading to the '+({DESK:'desk',BALL:'crystal ball',SCOPE:'telescope',SHELF:'bookshelves',BACK:'scroll shelf',HEARTH:'hearth',POTION:'potion table',FRUG:'rug',APPR:'desk'}[pickK]));
+  avGo(a,pickK);
+}
+function avStartAct(a){
+  const A=RACT[a.id][a.dest];a.node=a.dest;a.dest=null;
+  if(!A){a.state='idleR';a.timer=rr(1,2);return;}
+  a.state='act';a.kind=a.node;a.dir=A.dir;a.flip=A.flip;a.t=0;a.timer=rr(A.d[0],A.d[1])*(towerNight()&&a.node==='SCOPE'?1.6:1);a.gNext=rr(1.5,3.5);a.pN=0;
+  vAct(a,A.t);
+  if(a.node==='SHELF'||a.node==='BACK')puff(a.x+rr(-8,8),a.y-a.h*.75,'rgba(220,200,170,.55)',4);
+  if(a.node==='HEARTH'){room.flare=1;}
+}
+function avLeave(a){a.leaving=true;a.pose=null;vAct(a,'heading out of the tower');
+  const f=avOf('finn');if(a.id==='finn'){const m=avOf('merrick');if(m&&m.state==='act'&&rnd()<.8)say(m,pick(["Same time tomorrow, Finn.","Off you go. Practise!","Mind the step!"]),3,true);}
+  avGo(a,'MAT',b=>{b.state='fadeout';b.dir='down';b.node=null;});}
+function avBed(a){a.forceBed=false;vAct(a,'heading up to bed');
+  avGo(a,'STAIR',b=>{b.state='climb';b.node='STAIR';b.route=TOWER.climb.map(p=>p.slice());b.dir='up';b.flip=false;vAct(b,'climbing the stairs to bed');});}
+function avWake(a){a.state='descend';a.x=TOWER.climb[TOWER.climb.length-1][0];a.y=TOWER.climb[TOWER.climb.length-1][1];
+  a.route=TOWER.climb.slice(0,-1).reverse().map(p=>p.slice());a.route.push(TN.STAIR.slice());a.dir='down';a.alpha=0;a.left=1+(rnd()*2|0);a.night=false;vAct(a,'coming down for the day');}
+function avStep(a,dt,spd){
+  const t=a.route[0];if(!t)return true;const last=a.route.length===1;
+  const dx=t[0]-a.x,dy=t[1]-a.y,d=Math.hypot(dx,dy);
+  a.spf=Math.min(1,(a.spf||0)+dt/.3);const f=last?Math.min(a.spf,.3+d/14):a.spf;const st=(spd||a.speed)*f*dt;
+  if(d<=(last?st+.05:Math.max(st,4))){if(last){a.x=t[0];a.y=t[1];}a.route.shift();return a.route.length===0;}
+  const ux=dx/d,uy=dy/d;a.x+=ux*st;a.y+=uy*st;
+  if(a.state!=='climb'&&a.state!=='descend'){const ax=Math.abs(ux),ay=Math.abs(uy);
+    if(a.dir==='side'){if(ay>ax*1.6)a.dir=uy>0?'down':'up';else a.flip=ux>0;}else{if(ax>ay*1.6){a.dir='side';a.flip=ux>0;}else a.dir=uy>0?'down':'up';}}
+  a.animT+=st/((a.dir==='side'&&a.strideS)?a.strideS:a.stride);
+  return false;
+}
+function avTip(a,f){ // staff / wand tip in room world px
+  const sd=a.dir==='side'?1:0,fl=(a.dir==='side'&&a.flip)?-1:1,q=TIPR[a.id]&&TIPR[a.id][sd][f||0];
+  if(!q)return [a.x,a.y-a.h*.6];return [a.x+q[0]*fl*CS*ROOM_K,a.y+q[1]*CS*ROOM_K];}
+function poseF(u,rem){return (u<.12||rem<.12)?0:(u<.3||rem<.32)?1:2;}
+function avGesture(a,dur){a.pose={t:0,dur,fx:false};}
+function actFx(a,dt){
+  const k=a.kind,P=a.pose;
+  if(P){P.t+=dt;if(P.t>=P.dur){a.pose=null;}}
+  if(a.id==='merrick'){
+    a.gNext-=dt;
+    if(k==='BALL'){if(a.gNext<=0&&!a.pose){a.gNext=rr(3.5,6.5);avGesture(a,2.4);}
+      if(a.pose&&!a.pose.fx&&a.pose.t>.35){a.pose.fx=true;room.ballPulse=1.4;burst(357,144,14,{c:pick(['#d8b0ff','#b48cff','#ffffff']),v0:8,v1:30,s:1.8,gl:1});}
+      if(rnd()<dt*3)spark(357+rr(-8,8),146+rr(-8,6),pick(['#d8b0ff','#efe0ff']),{vx:rr(-4,4),vy:rr(-14,-6),ay:-2,life:rr(.8,1.4),s:1.6,gl:1});}
+    else if(k==='DESK'){if(a.gNext<=0&&!a.pose){a.gNext=rr(5,9);
+        if(rnd()<.4){avGesture(a,2);}else{for(let i=0;i<6;i++)spark(118+rr(-10,10),222+rr(-4,4),pick(['#fff6c8','#ffe27a']),{vx:rr(-6,6),vy:rr(-16,-6),ay:6,life:rr(.5,.9),s:1.6});}}
+      if(a.pose&&!a.pose.fx&&a.pose.t>.4){a.pose.fx=true;const tp=avTip(a,2);burst(tp[0],tp[1],12,{c:pick(MAGIC),v0:8,v1:26,s:1.8,gl:1});for(let i=0;i<5;i++)spark(105+rr(-14,14),214,pick(['#c7a4ff','#8fe8ff']),{vx:rr(-4,4),vy:rr(-20,-10),ay:-2,life:rr(1,1.6),s:1.8,gl:1});}}
+    else if(k==='SCOPE'){if(a.gNext<=0){a.gNext=rr(2.5,5);const w=TOWER.win;spark(rr(w.x0,w.x1),rr(w.y0,w.y1-10),'#ffffff',{vx:0,vy:0,ay:0,life:rr(.6,1),s:1.8,gl:1});}}
+    else if(k==='HEARTH'){if(rnd()<dt*6)spark(140+rr(-7,7),130,pick(['#ffd27a','#ff9a3a','#ffef9a']),{vx:rr(-4,4),vy:rr(-22,-10),ay:-3,life:rr(.5,1),s:1.6});
+      if(a.gNext<=0){a.gNext=rr(4,7);room.flare=1;puff(140,118,'rgba(90,80,80,.5)',3);}}
+    else if(k==='POTION'){if(rnd()<dt*2.2){const x=rr(348,394);puff(x,236,pick(['rgba(220,140,255,.6)','rgba(140,230,180,.6)','rgba(140,190,255,.6)']),1);}
+      if(a.gNext<=0&&!a.pose){a.gNext=rr(5,8);avGesture(a,1.8);}}
+  }else{ // Finn
+    if(k==='FRUG'){a.gNext-=dt;
+      if(a.gNext<=0&&!a.pose){a.gNext=rr(1.1,1.8);a.pN++;avGesture(a,.6);a.mis=(a.pN%4===3)&&rnd()<.35;}
+      if(a.pose&&!a.pose.fx&&a.pose.t>.2){a.pose.fx=true;const tp=avTip(a,1);
+        if(a.mis){puff(tp[0],tp[1]-3,'#3a3a44',8);puff(tp[0],tp[1]-3,'#7a7a8a',5);burst(tp[0],tp[1],8,{c:'#ff7a5a',v0:10,v1:34,s:1.6});floatText('Oops!',a.x,a.y-a.h-4,'#ffd0c0');
+          const m=avOf('merrick');if(m&&m.state==='act'&&rnd()<.6)setTimeout(()=>{if(room.av.includes(m))say(m,pick(["Gently, Finn. Gently.","That's how I lost my eyebrows.","Again. Calmer."]),2.8,true);},700);}
+        else burst(tp[0],tp[1],10,{c:pick(MAGIC),v0:8,v1:26,s:1.7,gl:1});}
+      if(rnd()<dt*5){const tp=avTip(a,0);spark(tp[0],tp[1],'#fff2a0',{vx:rr(-6,6),vy:rr(-16,-6),life:.5,s:1.4});}
+      if(a.timer<=0&&!a.pose&&!a.ta){a.ta=true;const tp=avTip(a,2);burst(tp[0],tp[1]-6,22,{c:pick(MAGIC),v0:10,v1:36,s:1.8,gl:1});floatText('Ta-da!',a.x,a.y-a.h-4,'#fff6c8');}}
+    else if(k==='POTION'){if(rnd()<dt*2)puff(rr(348,394),236,pick(['rgba(220,140,255,.6)','rgba(140,230,180,.6)']),1);}
+  }
+}
+const RCHAT={merrick:["Steady wrist, Finn. Steady.","Less flourish, more focus.","Mind the curtains this time.","Good! Again, but gentler.","Never stir clockwise on a Tuesday.","Magic is mostly patience. And snacks."],
+  finn:["Like this, Master Merrick?","It sparkled! It actually sparkled!","Sorry about the curtains.","Can I try the big book next?","My wand feels wiggly today.","Is the orrery spinning or is it me?"]};
+const RTAP={merrick:["Ah, a visitor! Mind the books.","Shh, the crystal ball is thinking.","Tea? It may be a potion. Hard to say.","Welcome to my tower!"],
+  finn:["I'm an apprentice now!","Watch this! ...Ta-da?","Master Merrick says I'm getting better."]};
+function roomChat(dt){
+  const m=avOf('merrick'),f=avOf('finn');if(!m||!f)return;
+  room.chatT-=dt;if(room.chatT>0)return;
+  if(m.state==='act'&&f.state==='act'&&dist([m.x,m.y],[f.x,f.y])<160){room.chatT=rr(14,24);
+    if(rnd()<.5){say(m,pick(RCHAT.merrick),3,true);setTimeout(()=>{if(room.av.includes(f))say(f,pick(RCHAT.finn),3,true);},1600);}
+    else{say(f,pick(RCHAT.finn),3,true);setTimeout(()=>{if(room.av.includes(m))say(m,pick(RCHAT.merrick),3,true);},1600);}}
+  else room.chatT=2;
+}
+function climbAlpha(y){const y0=TOWER.climb[0][1]+18,y1=TOWER.climb[TOWER.climb.length-1][1];return clamp((y-y1)/(y0-y1)*1.7,0,1);}
+function updateAv(a,dt){
+  if(a.id==='finn')a.tLeft-=dt;
+  switch(a.state){
+    case 'walk':
+      if(a.alpha<1)a.alpha=Math.min(1,a.alpha+dt/.45);
+      if(avStep(a,dt)){const f=a.then;a.then=null;if(f)f(a);else avStartAct(a);}
+      break;
+    case 'act':
+      a.timer-=dt;a.t+=dt;actFx(a,dt);
+      if(a.timer<=0&&!a.pose){if(a.id==='merrick')a.left--;a.ta=false;avNext(a);}
+      break;
+    case 'idleR':a.timer-=dt;if(a.timer<=0)avNext(a);break;
+    case 'fadeout':a.alpha-=dt/.45;a.y+=dt*10;if(a.alpha<=0){a.alpha=0;roomRelease(a.v);}break;
+    case 'climb':
+      if(avStep(a,dt,a.speed*.6)){a.state='upstairs';a.alpha=0;vAct(a,'asleep upstairs in the tower');a.zT=0;}
+      else a.alpha=climbAlpha(a.y);
+      break;
+    case 'upstairs':
+      if(a.wakeNow||!towerNight()){a.wakeNow=false;avWake(a);}
+      else if(room.mode==='tower'){a.zT-=dt;if(a.zT<=0){a.zT=2.6;floatText(pick(['z','Z','z z']),212+rr(-4,4),56,'#dfe6ff',2);}}
+      break;
+    case 'descend':
+      if(avStep(a,dt,a.speed*.6)){a.alpha=1;a.node='STAIR';a.dir='down';avNext(a);}
+      else a.alpha=climbAlpha(a.y);
+      break;
+  }
+}
+function roomUpdate(dt){
+  fxRoom=true;
+  try{
+    for(const a of room.av.slice())updateAv(a,dt);
+    roomChat(dt);
+    room.ballPulse=Math.max(0,room.ballPulse-dt);room.orrT=Math.max(0,room.orrT-dt);room.flare=Math.max(0,room.flare-dt*.8);
+    if(room.flare>.5&&rnd()<dt*14)spark(140+rr(-8,8),128,pick(['#ffd27a','#ff9a3a']),{vx:rr(-6,6),vy:rr(-30,-14),ay:-2,life:rr(.4,.8),s:1.6});
+  }finally{fxRoom=false;}
+}
+// ---- scene switch ----
+let backB=null;
+function enterRoom(instant){if(room.mode==='tower'||room.fdir)return;if(instant){switchScene('tower');return;}room.want='tower';room.fdir=1;tip.style.display='none';}
+function leaveRoom(instant){if(room.mode!=='tower'||room.fdir)return;if(instant){switchScene('village');return;}room.want='village';room.fdir=1;tip.style.display='none';}
+function switchScene(m){
+  const info=document.getElementById('info');
+  if(m==='tower'){room.saved={z:view.z,cx:view.cx,cy:view.cy,tz:view.tz,tcx:view.tcx,tcy:view.tcy};
+    view.z=view.tz=1;view.cx=view.tcx=W/2;view.cy=view.tcy=H/2;room.mode='tower';
+    if(info){if(room.infoTxt===null)room.infoTxt=info.textContent;info.textContent="You're inside Merrick's tower. Tap Merrick or Finn, the crystal ball, the orrery, the spellbook, the telescope or the hearth. Tap the door mat or ◀ Village to go back outside.";}
+    if(!room.av.length){fxRoom=true;floatText(towerNight()?'The tower is quiet tonight.':'Merrick is out and about.',240,200,'#fff6c8');fxRoom=false;}
+  }else{const s=room.saved;if(s){view.z=s.z;view.cx=s.cx;view.cy=s.cy;view.tz=s.tz;view.tcx=s.tcx;view.tcy=s.tcy;}room.mode='village';
+    if(info&&room.infoTxt!==null)info.textContent=room.infoTxt;}
+  const want=(view.tz>1||view.z>1.001)?R0*2:R0;if(want!==R){R=want;rebuild();}
+  syncZoomUI();syncRoomUI();
+}
+function syncRoomUI(){const inR=room.mode==='tower';const zb3=document.getElementById('zoom');if(zb3)zb3.style.display=inR?'none':'flex';if(backB)backB.style.display=inR?'block':'none';cv.classList.toggle('inroom',inR);}
+function roomFadeStep(dt){
+  if(!room.fdir)return;
+  room.fade+=room.fdir*dt/.35;
+  if(room.fdir>0&&room.fade>=1){room.fade=1;switchScene(room.want);room.fdir=-1;}
+  else if(room.fdir<0&&room.fade<=0){room.fade=0;room.fdir=0;}
+}
+// ---- drawing ----
+function buildRoomR(){
+  if(!assets.towerBg)return null;
+  const mkL=(img)=>{const c=mk(W*R,H*R),g=c.getContext('2d');g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';if(img)g.drawImage(img,0,0,W*R,H*R);return c;};
+  const r={R,bg:mkL(assets.towerBg),bgN:mkL(assets.towerBgN),pieces:[]};
+  const at=assets.towerOcc;
+  if(at)for(const p of TOWER.occ.pieces){const w=Math.max(1,Math.round(p.w/PAINT_S*R)),h=Math.max(1,Math.round(p.h/PAINT_S*R));
+    const cut=(sx)=>{const c=mk(w,h),x=c.getContext('2d');x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(at,sx,p.ay,p.w,p.h,0,0,w,h);return c;};
+    r.pieces.push({c:cut(0),cN:cut(TOWER.occ.nx),x:Math.round(p.x*R),y:Math.round(p.y*R),sy:p.sy,n:p.n});}
+  r.pieces.sort((a,b)=>a.sy-b.sy);
+  return r;
+}
+function roomSheet(k){ // 3x sheets, "sharp bilinear": nearest-neighbour upscale to the next whole multiple, then one smooth step down (crisp pixels, no uneven doubling)
+  if(roomSheetsR!==R){roomSheets={};roomSheetsR=R;}
+  if(roomSheets[k])return roomSheets[k];
+  const img=assets[k],m=CHARS[k];if(!img||!m)return null;
+  const f=R*ROOM_K*CS/K,n=Math.max(1,Math.ceil(f-1e-6));
+  const big=mk(img.width*n,img.height*n),bx=big.getContext('2d');bx.imageSmoothingEnabled=false;bx.drawImage(img,0,0,big.width,big.height);
+  const cw=Math.round(m.cw*f),ch=Math.round(m.ch*f),c=mk(cw*m.cols,ch*m.rows),x=c.getContext('2d');
+  x.imageSmoothingEnabled=Math.abs(n-f)>1e-6;x.imageSmoothingQuality='high';x.drawImage(big,0,0,c.width,c.height);
+  return roomSheets[k]={c,cw,ch,ay:Math.round(m.ay*f)};
+}
+function avFrame(a,t){
+  const moving=(a.state==='walk'||a.state==='climb'||a.state==='descend'||a.state==='fadeout')&&a.route&&a.route.length>0;
+  if(moving){const sf=(a.dir==='side'&&SF[a.sheet])||0;let col;
+    if(sf){const f=Math.floor(a.animT)%sf;col=f<0?f+sf:f;}else col=Math.floor(a.animT)&3;
+    const dy=-.6*ROOM_K*(.5-.5*Math.cos(2*Math.PI*a.animT/(sf?3:2)))*Math.min(1,a.spf*1.6);
+    return [a.sheet,ROW[a.dir]||0,col,dy];}
+  if(a.pose&&a.dir!=='up'){const P=a.pose,f=poseF(P.t,P.dur-P.t);return [a.id+'act',a.dir==='side'?1:0,f,0];}
+  return [a.sheet+'stand',ROW[a.dir]||0,lifeCol(a,t),0];
+}
+let avTmp=null;
+function avLight(a){let L=0,c='255,168,90';const cx=a.x,cy=a.y-a.h*.5;for(const l of TOWER.lights){const r=l.r*2.6,d2=((cx-l.x)**2+(cy-l.y)**2)/(r*r),e=Math.exp(-d2);if(e>L){L=e;c=l.c;}}return [L,c];}
+function drawAv(a,t){
+  if(a.alpha<=0)return;
+  const [k,row,col,dy]=avFrame(a,t);const sh=roomSheet(k)||roomSheet(a.sheet);if(!sh)return;
+  if(!avTmp)avTmp=mk(8,8);if(avTmp.width<sh.cw||avTmp.height<sh.ch){avTmp.width=Math.max(avTmp.width,sh.cw);avTmp.height=Math.max(avTmp.height,sh.ch);}
+  const tx=avTmp.getContext('2d');tx.globalCompositeOperation='source-over';tx.globalAlpha=1;tx.clearRect(0,0,avTmp.width,avTmp.height);
+  tx.drawImage(sh.c,col*sh.cw,row*sh.ch,sh.cw,sh.ch,0,0,sh.cw,sh.ch);
+  const nk=nightK;
+  if(nk>.02){const [lt,lc]=avLight(a);tx.globalCompositeOperation='source-atop';
+    tx.fillStyle='rgba(22,22,58,'+(nk*.64*(1-.55*lt)).toFixed(3)+')';tx.fillRect(0,0,sh.cw,sh.ch);
+    if(lt>.04){tx.fillStyle='rgba('+lc+','+(nk*.24*lt).toFixed(3)+')';tx.fillRect(0,0,sh.cw,sh.ch);}
+    tx.globalCompositeOperation='source-over';}
+  // soft shadow
+  ctx.globalAlpha=.26*a.alpha;ctx.fillStyle='rgb(24,14,30)';ctx.beginPath();ctx.ellipse(a.x*R,(a.y-.4)*R,a.shadowW*R*.95,a.shadowW*.34*R,0,0,6.283);ctx.fill();
+  ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,a.alpha));
+  const px=Math.round(a.x*R),py=Math.round((a.y+dy)*R),fl=a.dir==='side'&&a.flip;
+  if(fl){ctx.translate(px,0);ctx.scale(-1,1);ctx.drawImage(avTmp,0,0,sh.cw,sh.ch,-Math.round(sh.cw/2),py-sh.ay,sh.cw,sh.ch);}
+  else ctx.drawImage(avTmp,0,0,sh.cw,sh.ch,px-Math.round(sh.cw/2),py-sh.ay,sh.cw,sh.ch);
+  ctx.restore();ctx.globalAlpha=1;
+}
+function drawRoomGlows(t){
+  ctx.save();ctx.globalCompositeOperation='lighter';const nk=nightK;
+  for(const l of TOWER.lights){let a;
+    if(l.k==='fire')a=(.12+.38*nk)*(.82+.12*Math.sin(t*9.3)+.06*Math.sin(t*23.1))+room.flare*.35;
+    else if(l.k==='candle')a=(.06+.34*nk)*(.86+.14*Math.sin(t*11+l.x));
+    else if(l.k==='ball')a=(.12+.3*nk)*(.85+.15*Math.sin(t*2.1))+room.ballPulse*.45;
+    else a=(.04+.18*nk);
+    glow(l.x,l.y,l.r,l.c,a);}
+  if(room.orrT>0){const O=TOWER.props.orrery,k=Math.min(1,room.orrT);for(let i=0;i<4;i++){const ang=t*(2.2+i*.7)+i*1.6,rx=[19,14,10,22][i],ry=rx*.32;
+      const x=O.x+Math.cos(ang)*rx,y=O.y-6+Math.sin(ang)*ry;glow(x,y,4,['110,170,255','255,120,90','140,230,140','210,160,255'][i],.9*k);}}
+  ctx.restore();ctx.globalAlpha=1;
+}
+function drawRoomDebug(){
+  ctx.save();
+  ctx.beginPath();ctx.rect(0,0,W*R,H*R);TOWER.walk.forEach((p,i)=>i?ctx.lineTo(p[0]*R,p[1]*R):ctx.moveTo(p[0]*R,p[1]*R));ctx.closePath();
+  ctx.fillStyle='rgba(255,0,0,.22)';ctx.fill('evenodd');
+  ctx.strokeStyle='#5f5';ctx.lineWidth=Math.max(1,R*.6);ctx.beginPath();TOWER.walk.forEach((p,i)=>i?ctx.lineTo(p[0]*R,p[1]*R):ctx.moveTo(p[0]*R,p[1]*R));ctx.closePath();ctx.stroke();
+  ctx.strokeStyle='rgba(255,230,0,.8)';ctx.lineWidth=Math.max(1,R*.4);for(const [a,b] of TOWER.edges){ctx.beginPath();ctx.moveTo(TN[a][0]*R,TN[a][1]*R);ctx.lineTo(TN[b][0]*R,TN[b][1]*R);ctx.stroke();}
+  if(roomR)for(const p of roomR.pieces){ctx.strokeStyle='rgba(0,230,255,.9)';ctx.strokeRect(p.x,p.y,p.c.width,p.c.height);ctx.strokeStyle='#f0f';ctx.beginPath();ctx.moveTo(p.x,p.sy*R);ctx.lineTo(p.x+p.c.width,p.sy*R);ctx.stroke();
+    ctx.fillStyle='#0ff';ctx.font=(5*R)+'px monospace';ctx.fillText(p.n+' sy'+p.sy,p.x+2,p.sy*R-2);}
+  ctx.font='bold '+(6*R)+'px monospace';
+  for(const k in TN){const [x,y]=TN[k];ctx.fillStyle='#ffd400';ctx.fillRect(x*R-2*R,y*R-2*R,4*R,4*R);ctx.lineWidth=R;ctx.strokeStyle='#000';ctx.strokeText(k,x*R+3*R,y*R-2*R);ctx.fillStyle='#fff';ctx.fillText(k,x*R+3*R,y*R-2*R);}
+  for(const a of room.av){ctx.strokeStyle='#ff5';ctx.strokeRect((a.x-a.h*.28)*R,(a.y-a.h)*R,a.h*.56*R,a.h*R);}
+  ctx.restore();
+}
+function drawRoom(dt){
+  ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+  if(!roomR||roomR.R!==R)roomR=buildRoomR();
+  ctx.fillStyle='#120e18';ctx.fillRect(0,0,cv.width,cv.height);
+  if(!roomR)return;
+  const nk=nightK,t=tAcc;
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(roomR.bg,0,0);
+  if(nk>.01){ctx.globalAlpha=Math.min(1,nk);ctx.drawImage(roomR.bgN,0,0);ctx.globalAlpha=1;}
+  const avs=room.av.filter(a=>a.alpha>0).sort((a,b)=>a.y-b.y||a.uid-b.uid);let ai=0;
+  for(const p of roomR.pieces){
+    while(ai<avs.length&&avs[ai].y<p.sy){drawAv(avs[ai],t);ai++;}
+    ctx.drawImage(p.c,p.x,p.y);if(nk>.01){ctx.globalAlpha=Math.min(1,nk);ctx.drawImage(p.cN,p.x,p.y);ctx.globalAlpha=1;}
+  }
+  while(ai<avs.length){drawAv(avs[ai],t);ai++;}
+  drawParticles(dt,0,room.fx);
+  drawRoomGlows(t);
+  ctx.save();ctx.globalCompositeOperation='lighter';drawParticles(dt,1,room.fx);ctx.restore();
+  if(DEBUG)drawRoomDebug();
+}
+// ---- taps inside ----
+function roomCharAt(wx,wy){let best=null,bd=1e9;for(const a of room.av){if(a.alpha<.3)continue;
+  if(Math.abs(wx-a.x)<a.h*.3&&wy>a.y-a.h*.95&&wy<a.y+4){const d=Math.abs(wy-(a.y-a.h*.5));if(d<bd){bd=d;best=a;}}}return best;}
+function roomProp(wx,wy){for(const k in TOWER.props){const p=TOWER.props[k];if(Math.hypot(wx-p.x,wy-p.y)<p.r)return k;}return null;}
+function roomPropTap(k){
+  fxRoom=true;try{
+  const P=TOWER.props[k];
+  if(k==='ball'){room.ballPulse=1.8;burst(P.x,P.y-2,22,{c:pick(['#d8b0ff','#b48cff','#ffffff']),v0:10,v1:36,s:1.8,gl:1});floatText(pick(['A vision…','The mists swirl…','I see… snacks.']),P.x,P.y-28,'#e8d8ff');}
+  else if(k==='orrery'){room.orrT=3.2;for(let i=0;i<8;i++)spark(P.x+rr(-16,16),P.y-6+rr(-6,6),pick(['#ffe27a','#8fe8ff','#ff9de0']),{vx:rr(-8,8),vy:rr(-12,-4),ay:4,life:rr(.6,1.1),s:1.6,gl:1});floatText('Round and round!',P.x-20,P.y-30,'#fff6c8');}
+  else if(k==='book'){for(let i=0;i<14;i++)spark(P.x+rr(-18,18),P.y-4+rr(-4,4),pick(['#fff6c8','#ffe27a','#c7a4ff']),{vx:rr(-8,8),vy:rr(-24,-8),ay:8,life:rr(.6,1.2),s:1.7,gl:1});floatText('Flip!',P.x,P.y-24,'#fff6c8');}
+  else if(k==='scope'){const w=TOWER.win;for(let i=0;i<5;i++)spark(rr(w.x0,w.x1),rr(w.y0,w.y1-8),'#ffffff',{vx:0,vy:0,ay:0,life:rr(.7,1.3),s:2,gl:1});floatText('Twinkle!',P.x,P.y-24,'#dfe6ff');}
+  else if(k==='hearth'){room.flare=1.6;burst(P.x,P.y+2,16,{c:pick(['#ffd27a','#ff9a3a','#ffef9a']),v0:10,v1:30,up:16,s:1.7});puff(P.x,P.y-10,'rgba(90,80,80,.5)',4);floatText('Crackle!',P.x,P.y-26,'#ffd8a8');}
+  else if(k==='stair'){const m=avOf('merrick');floatText(m&&m.state==='upstairs'?'Shh… Merrick is asleep upstairs.':'The stairs go up to Merrick’s bedroom.',P.x+20,P.y-10,'#dfe6ff');}
+  }finally{fxRoom=false;}
+}
+function roomTap(e,wx,wy){
+  const a=roomCharAt(wx,wy);
+  if(a){showTipFor(e,a);clearTimeout(showTipFor.t);showTipFor.t=setTimeout(()=>tip.style.display='none',2600);
+    fxRoom=true;try{say(a,pick(RTAP[a.id]||['Hello!']),3,true);
+      if(a.state==='act'&&!a.pose&&a.dir!=='up')avGesture(a,a.id==='finn'?.7:1.6);
+      burst(a.x,a.y-a.h*.85,8,{c:pick(MAGIC),v0:6,v1:20,s:1.6,gl:1});}finally{fxRoom=false;}
+    return;}
+  const M=TOWER.mat;if(wx>M.x0&&wx<M.x1&&wy>M.y0&&wy<M.y1){leaveRoom();return;}
+  const p=roomProp(wx,wy);if(p){roomPropTap(p);return;}
+}
+// ---- test hooks: FV.trigger('room', 'tower'|'village', instant) and FV.trigger('tower', cmd, ...) ----
+function towerTrigger(cmd,a,b){
+  if(cmd==='in'){const v=a==='finn'?finn:merrick;if(v===finn&&!merrickHome())towerTrigger('in','merrick',b);
+    if(avOf(v.id))return;r9free(v);v.targetDoor='TD';v.last='TD';v.node='TD';v.x=N.TD[0];v.y=N.TD[1];v.state='inside';v.alpha=0;v.timer=1e9;v.act='indoors';
+    if(v===finn)v.appr=true;roomArrive(v,b||null);}
+  else if(cmd==='act'){const av=avOf(a);if(av&&TN[b]&&RACT[a][b]){if(arguments[3]){av.x=TN[b][0];av.y=TN[b][1];av.node=b;av.route=[];av.dest=b;avStartAct(av);}else{av.lastAct=b;avGo(av,b);}}}
+  else if(cmd==='bed'){const av=avOf('merrick');if(av){av.forceBed=true;av.pose=null;if(av.state==='act'||av.state==='idleR'||av.state==='walk')avBed(av);}}
+  else if(cmd==='wake'){const av=avOf('merrick');if(av&&av.state==='upstairs')av.wakeNow=true;}
+  else if(cmd==='out'){const av=avOf(a||'merrick');if(av){if(av.id==='merrick')av.left=0;av.tLeft=0;avLeave(av);}}
+  else if(TOWER.props[cmd])roomPropTap(cmd);
+}
 
 // ---------- characters ----------
 let UID=0;
@@ -286,6 +644,9 @@ function faceCounter(v){ // customers face the stall's counter (the first one st
 function castPose(v,kind,t){v.state='cast';v.phase='cast';v.timer=t;v.castT=0;v.flashed=false;v.dir='down';v.castKind=kind;v.act='casting '+({stars:'a sparkle spell',ring:'a ring of light',petals:'a shower of petals'}[kind]);}
 function chooseActivity(v){
   v.ringNode=null;
+  // round 9 stage 3: Merrick sleeps upstairs in his tower at night; Finn visits as apprentice in 2-3 daytime windows while Merrick is home
+  if(v===merrick&&(towerNight()||(apprSlotNow()&&rnd()<.6)||v.goTower)){v.goTower=false;v.bed=towerNight();v.last='TD';v.targetDoor='TD';v.phase='toDoor';v.act=v.bed?'heading home to bed in the tower':'heading back to the tower';goTo(v,'TD');if(v.state!=='walk')arrive(v);return;}
+  if(v===finn){const sl=apprSlotNow();if(sl&&merrickHome()){sl.done=true;v.appr=true;v.last='TD';v.targetDoor='TD';v.phase='toDoor';v.act="off to Merrick's tower for a lesson";goTo(v,'TD');if(v.state!=='walk')arrive(v);return;}}
   const w=v.opt.w,keys=Object.keys(w);
   const ok=k=>{
     if(k==='stall')return juniper&&juniper.state==='post'&&queue.length<3&&!v.item;
@@ -297,7 +658,7 @@ function chooseActivity(v){
   const cand=keys.filter(ok);let r=rnd()*cand.reduce((s,k)=>s+w[k],0);
   let act=cand[0];for(const k of cand){r-=w[k];if(r<=0){act=k;break;}}
   if(act==='house'){
-    const d=pick(DOORS.filter(x=>x!==v.last));v.last=d;v.targetDoor=d;v.phase='toDoor';
+    const d=pick(DOORS.filter(x=>x!==v.last&&(x!=='TD'||v===merrick)));v.last=d;v.targetDoor=d;v.phase='toDoor';
     v.act='heading to '+DOORNAME[d];goTo(v,d);
   }else if(act==='tower'){
     v.last='TD';v.targetDoor='TD';v.phase='toDoor';v.act='heading back to the tower';goTo(v,'TD');
@@ -427,9 +788,11 @@ function updateVillager(v,dt){
     case 'enter':
       v.timer-=dt;v.alpha=Math.max(0,v.timer/.55);v.y-=dt*4;
       if(v.timer<=0){v.state='inside';v.timer=v.id==='finn'?rr(4,8):rr(6,14);v.alpha=0;v.act='indoors';
-        const p=N[v.targetDoor];v.x=p[0];v.y=p[1];}
+        const p=N[v.targetDoor];v.x=p[0];v.y=p[1];
+        if(v.targetDoor==='TD'&&(v===merrick||(v===finn&&v.appr)))roomArrive(v);}
       break;
     case 'inside':
+      if(v.roomCtl)break; // the tower room decides when Merrick / Finn walk back out
       v.timer-=dt;
       if(v.timer<=0){v.state='exit';v.timer=.55;v.dir='down';v.flip=false;v.y=N[v.targetDoor][1]-2;}
       break;
@@ -700,6 +1063,7 @@ function r9free(v){ // test hooks: release whatever v was committed to
   dropFromQueue(v);if(wellBusy===v)wellBusy=null;if(juniper&&juniper.serving===v)juniper.serving=null;
   if(v.pot){if(v.pot.state==='held')respawnPot(v.pot);v.pot.claim=null;v.pot=null;}
   v.ringNode=null;v.resume=null;v.laQ=[];v.la=null;v.cutT=-1;v.cut=-1;v.partner=null;v.route=[];v.alpha=1;v.lift=0;v.squash=1;v.mis=false;
+  if(v.roomCtl){const i=room.av.findIndex(o=>o.v===v);if(i>=0)room.av.splice(i,1);v.roomCtl=false;v.bed=false;v.appr=false;}
   if(v.state==='inside'||v.state==='enter'||v.state==='exit'){v.state='idle';v.timer=2;}
 }
 // ---- Rosie's cauldron ----
@@ -917,7 +1281,7 @@ let elfDay=null;
 function todayKey(){if(HOUR_FLAG!==null)return 'demo';try{return new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});}catch(e){return new Date().toDateString();}}
 function elfWindow(){return hourNow>=18.3&&hourNow<=20.6;}
 function mkElf(){
-  const e=mkVillager('elf','Faelan','elf traveler',19,'PT',{h:37,stride:4.6,sw:8.4,w:{}});
+  const e=mkVillager('elf','Faelan','elf traveler',19,'PT',{strideS:3.333,h:37,stride:4.6,sw:8.4,w:{}});
   villagers.splice(villagers.indexOf(e),1);ELFREF=e;e.alpha=0;e.state='gone';e.timer=rr(2,5);e.act='passing through';return e;
 }
 function updateElf(e,dt){
@@ -1335,7 +1699,7 @@ function shadow(x,y,w,a){
   ctx.beginPath();ctx.ellipse((x+w*.16)*R,(y-.3)*R,w*R,w*.4*R,0,0,6.283);ctx.fill();
 }
 const ROW={down:0,up:1,side:2};
-const SF={rosie:6,theo:6,mabel:6,finn:6,merrick:6,helm:6,linky:6,luthien:6}; // side-walk frames per sheet (round 7: real 6-frame cycles)
+const SF={rosie:6,theo:6,mabel:6,finn:6,merrick:6,helm:6,linky:6,luthien:6,elf:6}; // side-walk frames per sheet (round 7: real 6-frame cycles)
 function drawItem(v,x,y){
   const k=v.item;const it=ITEMS[k];if(!it)return;
   let ix,iy;
@@ -1473,13 +1837,14 @@ function drawDuck(d,t){
   }else{row=1;col=moving?(Math.floor(d.animT*1.2)&3):0;}
   drawSprite(d.sheet,row,col,x,y,{flip:d.flip,dy,clip:d.clipWL});
 }
-function drawParticles(dt,pass){ // pass 0 = ordinary, 1 = additive
-  for(let i=particles.length-1;i>=0;i--){
-    const p=particles[i];
-    if(pass===0){p.life-=dt;if(p.life<=0){if(p.k==='rocket')fwBurst(p);particles.splice(i,1);continue;}p.vy+=p.ay*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;
-      if(p.k==='rocket'&&particles.length<800&&rnd()<.9)particles.push({k:'spark',x:p.x,y:p.y,vx:rr(-3,3),vy:rr(2,8),ay:10,life:rr(.25,.45),max:.4,c:p.c[1],s:.7,add:true,ph:0,gl:0});
+function drawParticles(dt,pass,L,noDraw){ // pass 0 = ordinary (also ages them), 1 = additive; L = particle list (village or tower room); noDraw = age only
+  L=L||particles;
+  for(let i=L.length-1;i>=0;i--){
+    const p=L[i];
+    if(pass===0){p.life-=dt;if(p.life<=0){if(p.k==='rocket')fwBurst(p);L.splice(i,1);continue;}p.vy+=p.ay*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;
+      if(p.k==='rocket'&&L.length<800&&rnd()<.9)L.push({k:'spark',x:p.x,y:p.y,vx:rr(-3,3),vy:rr(2,8),ay:10,life:rr(.25,.45),max:.4,c:p.c[1],s:.7,add:true,ph:0,gl:0});
       if(p.k==='item'&&p.y>=p.land&&p.vy>0){p.vy=0;p.vx=0;p.ay=0;p.y=p.land;if(!p.keep&&p.life>.5)p.life=.5;}}
-    if(!!p.add!==(pass===1))continue;
+    if(noDraw||!!p.add!==(pass===1))continue;
     const a=Math.min(1,p.life/p.max*1.6);
     ctx.globalAlpha=a;
     if(p.k==='drop'){ctx.fillStyle='#7fc8f0';ctx.fillRect(Math.round(p.x*R),Math.round(p.y*R),Math.max(1,R),Math.max(1,R*1.4));}
@@ -1565,9 +1930,11 @@ function drawScreen(dt){
   const bpc=cv.width/Math.max(1,cv.clientWidth); // backing px per css px
   const fs=12*bpc;
   for(let i=floaters.length-1;i>=0;i--){const f=floaters[i];f.life-=dt;if(f.life<=0){floaters.splice(i,1);continue;}f.y+=f.vy*dt;f.vy*=.985;
+    if(!!f.room!==(room.mode==='tower'))continue;
     const [sx,sy]=toScreen(f.x,f.y);ctx.globalAlpha=Math.min(1,f.life/f.max*2);
-    ctx.font='700 '+(13*bpc)+'px system-ui,sans-serif';ctx.textAlign='center';ctx.lineWidth=3*bpc;ctx.strokeStyle='rgba(40,20,80,.85)';ctx.strokeText(f.text,sx,sy);ctx.fillStyle=f.c;ctx.fillText(f.text,sx,sy);ctx.globalAlpha=1;ctx.textAlign='left';}
+    ctx.font='700 '+(13*(f.sz||1)*bpc)+'px system-ui,sans-serif';ctx.textAlign='center';ctx.lineWidth=3*bpc;ctx.strokeStyle='rgba(40,20,80,.85)';ctx.strokeText(f.text,sx,sy);ctx.fillStyle=f.c;ctx.fillText(f.text,sx,sy);ctx.globalAlpha=1;ctx.textAlign='left';}
   for(let i=bubbles.length-1;i>=0;i--){const b=bubbles[i];b.life-=dt;if(b.life<=0){bubbles.splice(i,1);continue;}
+    if(!!b.o.room!==(room.mode==='tower'))continue;
     const [sx,sy]=toScreen(b.o.x,b.o.y-(b.o.lift||0)-b.o.h-1);
     if(b.px){ // small pixel-style bubble (chats, hat)
       const pfs=Math.max(9,10.5*bpc),bx=bubbleBox(b.text,sx,sy,pfs,cv.width*.3,'700 '+pfs+'px ui-monospace,Menlo,Consolas,monospace');
@@ -1605,8 +1972,9 @@ function frame(ts){
   if(!groundR)return;
   const t0=window.__perf?performance.now():0;
   const dt=Math.min(.05,(ts-last)/1000||0);last=ts;tAcc+=dt;
-  updateTime(dt);applyView(dt);
+  updateTime(dt);roomFadeStep(dt);applyView(dt);
   for(let i=0;i<TS;i++){
+    roomUpdate(dt);
     for(const v of villagers)v===juniper?updateJuniper(v,dt):updateVillager(v,dt);
     updateAnimal(cat,dt);updateAnimal(dog,dt);updateAnimal(dragon,dt);
     for(const d of ducks)updateDuck(d,dt);
@@ -1621,6 +1989,10 @@ function frame(ts){
     if(rnd()<dt*.9){const o=pick(GARDENS); // gentle idle sparkle over the flower beds
       spark(o[0]+rr(-10,10),o[1]+rr(-8,4),pick(MAGIC),{vx:rr(-2,2),vy:rr(-8,-3),ay:-1,life:rr(.8,1.4),s:.9});}
   }
+  if(room.mode==='tower'){ // inside the tower: draw the room; the village keeps updating (its particles still age)
+    drawRoom(dt);drawParticles(dt,0,particles,true);
+  }else{
+  if(room.fx.length)drawParticles(dt,0,room.fx,true);
   // base transform: world cache px -> canvas px (zoom/pan)
   ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#4a8f3b';ctx.fillRect(0,0,cv.width,cv.height);
   const k=view.z*R0/R;
@@ -1644,8 +2016,10 @@ function frame(ts){
   drawAir(tAcc);
   ctx.save();ctx.globalCompositeOperation='lighter';drawParticles(dt,1);ctx.restore();
   if(DEBUG)drawDebug();
+  }
   ctx.setTransform(1,0,0,1,0,0);
   drawScreen(dt);
+  if(room.fade>0){const e=room.fade*room.fade*(3-2*room.fade);ctx.globalAlpha=1;ctx.fillStyle='rgba(8,6,14,'+e.toFixed(3)+')';ctx.fillRect(0,0,cv.width,cv.height);}
   frameN++;
   if(frameN%30===0)updatePanel();
   if(window.__perf)window.__perf.push(performance.now()-t0);
@@ -1673,6 +2047,7 @@ function propAt(wx,wy){ // interactive scenery
   if(wx>46&&wx<96&&wy>112&&wy<178)return 'well';
   if(Math.hypot((wx-FOUNTAIN.x)/42,(wy-(FOUNTAIN.y-6))/42)<1)return 'fountain';
   if(wx>384&&wx<448&&wy>218&&wy<310)return 'portal';
+  if(wx>348&&wx<380&&wy>94&&wy<136)return 'towerdoor'; // round 9 stage 3: the door leads inside
   if(wx>338&&wx<396&&wy>4&&wy<128)return 'tower';
   return null;
 }
@@ -1706,6 +2081,8 @@ function zoomAt(wx,wy,z){view.tz=z;view.tcx=wx;view.tcy=wy;if(z>1&&R<R0*2){R=R0*
 function zoomOut(){view.tz=1;view.tcx=W/2;view.tcy=H/2;syncZoomUI();}
 function onTap(e){
   const [wx,wy]=toWorld(e);
+  if(room.fdir)return;
+  if(room.mode==='tower'){roomTap(e,wx,wy);return;}
   const now=performance.now(),lt=ptr.lastTap,wasZoomed=view.tz>1;
   const dbl=lt&&now-lt.t<360&&Math.hypot(e.clientX-lt.x,e.clientY-lt.y)<34&&lt.zoomed;
   ptr.lastTap={t:now,x:e.clientX,y:e.clientY,zoomed:wasZoomed};
@@ -1717,6 +2094,7 @@ function onTap(e){
   if(p==='well'){wellWish();return;}
   if(p==='fountain'){burst(FOUNTAIN.spout[0],FOUNTAIN.spout[1]+4,30,{v0:12,v1:48,up:26,ay:30,gl:1});floatText('Splash!',FOUNTAIN.spout[0],FOUNTAIN.spout[1]-8,'#cfeeff');return;}
   if(p==='portal'){portal.want=false;portal.state='opening';portal.t=0;portal.hold=7;return;}
+  if(p==='towerdoor'){enterRoom();return;}
   if(p==='tower'){towerTap();return;}
   if(!wasZoomed)zoomAt(wx,wy,MAXZ); // tap empty ground: zoom in around that point
 }
@@ -1728,12 +2106,12 @@ cv.addEventListener('pointermove',e=>{
   if(ptr.down&&e.pointerId===ptr.id){
     const dx=e.clientX-ptr.px,dy=e.clientY-ptr.py;
     if(!ptr.moved&&Math.hypot(e.clientX-ptr.sx,e.clientY-ptr.sy)>7)ptr.moved=true;
-    if(ptr.moved&&view.tz>1){ // drag to pan
+    if(ptr.moved&&view.tz>1&&room.mode!=='tower'){ // drag to pan
       const cpw=cv.clientWidth/W*view.z;view.tcx-=dx/cpw;view.tcy-=dy/cpw;view.cx=view.tcx;view.cy=view.tcy;tip.style.display='none';
     }
     ptr.px=e.clientX;ptr.py=e.clientY;return;
   }
-  if(e.pointerType==='mouse'){const [wx,wy]=toWorld(e);showTipFor(e,charAt(wx,wy));}
+  if(e.pointerType==='mouse'){const [wx,wy]=toWorld(e);showTipFor(e,room.mode==='tower'?roomCharAt(wx,wy):charAt(wx,wy));}
 });
 function endPtr(e,cancel){
   if(!ptr.down||e.pointerId!==ptr.id)return;ptr.down=false;
@@ -1743,10 +2121,12 @@ function endPtr(e,cancel){
 cv.addEventListener('pointerup',e=>endPtr(e,false));
 cv.addEventListener('pointercancel',e=>endPtr(e,true));
 cv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')tip.style.display='none';});
-cv.addEventListener('wheel',e=>{e.preventDefault();const [wx,wy]=toWorld(e);if(e.deltaY<0&&view.tz<=1)zoomAt(wx,wy,MAXZ);else if(e.deltaY>0&&view.tz>1)zoomOut();},{passive:false});
+cv.addEventListener('wheel',e=>{e.preventDefault();if(room.mode==='tower'||room.fdir)return;const [wx,wy]=toWorld(e);if(e.deltaY<0&&view.tz<=1)zoomAt(wx,wy,MAXZ);else if(e.deltaY>0&&view.tz>1)zoomOut();},{passive:false});
 const zb=document.getElementById('zoom');
+backB=document.createElement('button');backB.id='back';backB.type='button';backB.textContent='◀ Village';backB.setAttribute('aria-label','Back to the village');backB.style.display='none';
+document.getElementById('stage').appendChild(backB);backB.addEventListener('click',()=>leaveRoom());
 if(zb)zb.addEventListener('click',()=>{if(view.tz>1)zoomOut();else zoomAt(view.cx,view.cy,MAXZ);});
-window.addEventListener('keydown',e=>{if(e.key==='Escape')zoomOut();});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(room.mode==='tower')leaveRoom();else zoomOut();}});
 
 // ---------- roster panel ----------
 const roster=document.getElementById('roster');
@@ -1771,8 +2151,8 @@ function updatePanel(){
 // ---------- start ----------
 async function start(){
   const names=[...PROPS,...Object.keys(CHARS).map(k=>k+'_sheet')];
-  const [bgI,occI]=await Promise.all([loadImg('assets/village_bg.webp'),loadImg('assets/village_occ.webp'),loadMaps()]);
-  assets.bg=bgI;assets.occ=occI;
+  const [bgI,occI,tbI,tnI,toI]=await Promise.all([loadImg('assets/village_bg.webp'),loadImg('assets/village_occ.webp'),loadImg('assets/tower_bg.webp?s3'),loadImg('assets/tower_bg_night.webp?s3'),loadImg('assets/tower_occ.webp?s3'),loadMaps()]);
+  assets.bg=bgI;assets.occ=occI;assets.towerBg=tbI;assets.towerBgN=tnI;assets.towerOcc=toI;
   const R8=new Set(['theo_sheet','finn_sheet','linky_sheet','griffin_sheet']),R9=/(stand|act|chat)_sheet$|^(cauldron|pot)_sheet$/;
   const imgs=await Promise.all(names.map(n=>loadImg('assets/'+n+'.png'+(R9.test(n)?'?r9':R8.has(n)?'?r8':''))));
   names.forEach((n,i)=>{assets[n.replace('_sheet','')]=imgs[i];});
@@ -1800,6 +2180,7 @@ async function start(){
   buildPanel();
   rebuild();
   syncZoomUI();
+  if(QS.get('room')==='tower'){merrick.goTower=true;switchScene('tower');}
   requestAnimationFrame(frame);
 }
 function trigger(what,a){ // test hooks: FV.trigger('portal'|'wish'|'flame'|'misfire'|'fly'|'cast'|'talk')
@@ -1834,10 +2215,14 @@ function trigger(what,a){ // test hooks: FV.trigger('portal'|'wish'|'flame'|'mis
   else if(what==='pot'){const P=POTS[a||0];if(P&&P.state!=='ready')respawnPot(P);const v=linky;if(P&&!P.claim){r9free(v);P.claim=v;v.pot=P;if(arguments[2]){v.x=P.sp[0];v.y=P.sp[1];v.node=P.node;v.dir='side';v.flip=P.face>0;if(arguments[3]!==undefined)P.forceGem=arguments[3];linkyQueue(v,[{n:'pot'}],'lifting a clay pot');}else{v.phase='toPot';v.act='eyeing a clay pot';goTo(v,P.node,[P.sp]);}}}
   else if(what==='potreset'){for(const P of POTS)respawnPot(P);}
   else if(what==='place'){const v=villagers.find(o=>o.id===a)||(a==='elf'?elf:null);const o=arguments[2]||{};if(v){r9free(v);v.x=o.x;v.y=o.y;v.dir=o.dir||'down';v.flip=!!o.flip;v.state='idle';v.timer=o.t||20;v.lookT=o.t||20;v.alpha=1;if(v===elf){v.state='pause';}}}
+  // round 9 stage 3 hooks: FV.trigger('room','tower'|'village',instant) and FV.trigger('tower','in'|'act'|'bed'|'wake'|'out'|'ball'|'orrery'|'book'|'scope'|'hearth',...)
+  else if(what==='room'){if(a==='village')leaveRoom(!!arguments[2]);else enterRoom(!!arguments[2]);}
+  else if(what==='tower')towerTrigger(a,arguments[2],arguments[3],arguments[4]);
   else if(what==='poke'){linky.state='walk';linky.phase='toPoke';linky.route=[];goTo(linky,'MA');}
 }
 window.addEventListener('resize',()=>{fit();});
 window.FV={POTS,poseOf,BENCHES,PERCHES,RINGE,FW,get helm(){return helm;},get linky(){return linky;},get luthien(){return luthien;},get griffin(){return griffin;},get owl(){return owl;},get elf(){return elf;},get hat(){return hatObj;},LETTERS,bubbles,N,EDGES,SLOTS,MAPS:()=>MAPS,inWater,ducks,villagers,chars,validateGraph,blocked,segClear,get R(){return R;},get R0(){return R0;},queue:()=>queue,view,items,LIGHTS,trigger,portal,particles,
+  room,TOWER,validateRoom,roomRoute,enterRoom,leaveRoom,apprSlots,towerNight,
   setHour(h){hourNow=h;},get nightK(){return nightK;},zoomAt,zoomOut,fairies,wisps,lanterns,sweepers,get frog(){return frog;},get dragon(){return dragon;},get merrick(){return merrick;},get cat(){return cat;},get dog(){return dog;}};
 fit();
 start();

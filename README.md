@@ -5,6 +5,25 @@
 A cozy, dense, slightly magical pixel village for pure fun, drawn on a single 480x360 world view
 (scaled to fit the window in quarter steps, backing store at 2-3x so it stays sharp).
 
+## Round 9 stage 3: inside Merrick's tower
+- **Tap the tower door** to fade into a separate painted room: Merrick's round study, with bookshelves, a hearth, a spiral stair, a window, a telescope, a crystal ball, an orrery, potions and a desk with an open spellbook. To go back outside, tap the door mat, the **◀ Village** button or Esc. `?room=tower` opens the room straight away for testing.
+- **Characters inside are drawn 3x their village size.** Their sheets are scaled crisply: a nearest-neighbour upscale, then one smooth step down. The room uses its own walk area, standing spots and foreground pieces (near wall, desk, potion table, crystal-ball stand, telescope, stair post), so the bigger figures fit the furniture.
+- **The room mirrors the village.** Merrick (and Finn on a visit) appears inside while their village self is "inside" the tower door. The room decides when they walk back out, and the village keeps running underneath while you watch.
+- **Merrick's day:** reads at the desk, gazes into the crystal ball, uses the telescope, browses the shelves, finds old scrolls, tends the hearth and brews at the potion table. **At night** (after 9:30 PM ET) he heads home, does a last look through the telescope, climbs the stair and sleeps upstairs until 6:15 AM.
+- **Finn's apprentice visits:** 2 or 3 daytime windows each Eastern day, only while Merrick is home. Finn practises on the rug (now and then a misfire), watches over Merrick's shoulder and helps with the potions. The two chat now and then.
+- **Taps inside:** Merrick and Finn answer you. The crystal ball, orrery, spellbook, telescope, hearth and stair each have a small reaction.
+- **Night** crossfades a night painting by the same Eastern-time night level as the village. The characters inside are tinted by the nearest light, and the flames flicker live.
+- Other villagers no longer pick the tower door when they go "into a house". It is Merrick's home now, and Finn only goes in for lessons.
+- Test hooks:
+  - `FV.trigger('room','tower'|'village',instant)`
+  - `FV.trigger('tower','in','merrick'|'finn',node)`
+  - `FV.trigger('tower','act',who,node,teleport)`
+  - `FV.trigger('tower','bed'|'wake'|'out')`
+  - `FV.trigger('tower','ball'|'orrery'|'book'|'scope'|'hearth')`
+  - `FV.room`, `FV.validateRoom()` (empty list = every node and edge stays on the room floor), `FV.apprSlots()`
+  - `?debug` inside the room shows the walk area, nodes, edges and foreground baselines.
+- Assets: `tower_bg.webp`, `tower_bg_night.webp` and `tower_occ.webp` (foreground pieces, day and night side by side).
+
 ## Round 9: standing still, little activities, Linky's adventures
 - **Standing poses**: everyone who isn't walking (all villagers, Juniper and the evening elf) now uses a real feet-together standing frame
   for every facing instead of the walk's contact frame. A walker held up for a moment also stands instead of freezing mid-stride.
